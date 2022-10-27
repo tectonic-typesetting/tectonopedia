@@ -1,0 +1,10 @@
+[package]
+name = "tectonopedia"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+clap = { version = "^4", features = ["derive"] }
+tectonic = "^0.11"
+tectonic_errors = "^0.2"
+walkdir = "^2"
