@@ -1,8 +1,20 @@
 // Copyright 2022 the Tectonic Project
 // Licensed under the MIT License
 
+//! "Pass 1"
+//!
+//! - Have to launch TeX in subprocesses because the engine can't be multithreaded
+//! - Use a threadpool to manage that
+//! - Subprocess stderr is passed straight on through for error reporing
+//! - Subprocess stdout is parsed for information transfer
+
 use clap::Args;
-use std::{ffi::OsString, path::PathBuf, process::Command};
+use std::{
+    ffi::OsString,
+    io::{BufRead, BufReader},
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 use tectonic::{
     config::PersistentConfig,
     driver::{PassSetting, ProcessingSessionBuilder},
@@ -63,22 +75,84 @@ macro_rules! ostry {
     };
 }
 
+/// Try something that returns a new Error, and report a Specific error if it fails.
+macro_rules! stry {
+    ($result:expr) => {
+        match $result {
+            Ok(v) => v,
+            Err(e) => {
+                let typecheck: Error = e.into();
+                return Err(FirstPassError::Specific(typecheck));
+            }
+        }
+    };
+}
+
 pub fn build_one_input(self_path: PathBuf, entry: DirEntry) -> Result<(), FirstPassError> {
     let mut cmd = Command::new(&self_path);
-    cmd.arg("first-pass-impl");
-    cmd.arg(entry.path());
+    cmd.arg("first-pass-impl")
+        .arg(entry.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped());
 
-    let s = gtry!(cmd
-        .status()
-        .context("failed to relaunch self as subcommand"));
+    let mut child = gtry!(cmd.spawn().context("failed to relaunch self as TeX worker"));
+    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut error_is_general = false;
 
-    if !s.success() {
-        return Err(FirstPassError::Specific(anyhow!(
-            "child failed specific test"
-        )));
+    for line in stdout.lines() {
+        match line {
+            Ok(line) => {
+                if let Some(rest) = line.strip_prefix("pedia:") {
+                    match rest {
+                        "general-error" => {
+                            error_is_general = true;
+                        }
+                        _ => {
+                            eprintln!(
+                                "warning({}): unrecognized stdout message: {}",
+                                entry.path().display(),
+                                line
+                            );
+                        }
+                    }
+                } else {
+                    eprintln!(
+                        "warning({}): unexpected stdout content: {}",
+                        entry.path().display(),
+                        line
+                    );
+                }
+            }
+
+            Err(e) => {
+                eprintln!(
+                    "warning({}): error reading stdout: {}",
+                    entry.path().display(),
+                    e
+                );
+            }
+        }
     }
 
-    Ok(())
+    let status = stry!(child
+        .wait()
+        .context("failed to wait for TeX worker subprocess"));
+
+    match (status.success(), error_is_general) {
+        (true, false) => Ok(()),
+        (true, true) => Err(FirstPassError::General(anyhow!(
+            "TeX worker for {} failed (but had a successful exit code?)",
+            entry.path().display()
+        ))),
+        (false, true) => Err(FirstPassError::General(anyhow!(
+            "TeX worker for {} failed",
+            entry.path().display()
+        ))),
+        (false, false) => Err(FirstPassError::Specific(anyhow!(
+            "TeX worker for {} failed",
+            entry.path().display()
+        ))),
+    }
 }
 
 #[derive(Args, Debug)]
@@ -94,14 +168,11 @@ impl FirstPassImplArgs {
             Ok(_) => Ok(()),
 
             Err(FirstPassError::General(e)) => {
-                println!("pedia: general-error");
+                println!("pedia:general-error");
                 Err(e)
             }
 
-            Err(FirstPassError::Specific(e)) => {
-                println!("pedia: specific-error");
-                Err(e)
-            }
+            Err(FirstPassError::Specific(e)) => Err(e),
         }
     }
 
