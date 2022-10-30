@@ -11,12 +11,19 @@ use walkdir::{DirEntry, WalkDir};
 
 mod config;
 mod pass1;
+mod worker_status;
+
+use worker_status::WorkerStatusBackend;
 
 fn main() {
     let args = ToplevelArgs::parse();
 
-    let mut status =
-        Box::new(TermcolorStatusBackend::new(ChatterLevel::Normal)) as Box<dyn StatusBackend>;
+    let mut status = match &args.action {
+        Action::FirstPassImpl(a) => {
+            Box::new(WorkerStatusBackend::new(&a.tex_path)) as Box<dyn StatusBackend>
+        }
+        _ => Box::new(TermcolorStatusBackend::new(ChatterLevel::Normal)) as Box<dyn StatusBackend>,
+    };
 
     if let Err(e) = args.exec(status.as_mut()) {
         status.report_error(&e);
@@ -127,7 +134,7 @@ impl BuildArgs {
             n_failures,
             n_tasks
         );
-        tt_note!("pass 1: processed {} inputs", n_tasks);
+        tt_note!(status, "pass 1: processed {} inputs", n_tasks);
         Ok(())
     }
 }

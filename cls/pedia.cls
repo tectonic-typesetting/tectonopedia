@@ -53,6 +53,6 @@ Dhref #1}#2\special{tdux:me a}%
 %
 % \entry{TITLE}
 %  Define an entry
-\newcommand{\entry}[1]{%
-  #1
-}
+%%\newcommand{\entry}[1]{%
+%%  #1
+%%}

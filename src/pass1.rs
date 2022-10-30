@@ -159,7 +159,7 @@ pub fn build_one_input(self_path: PathBuf, entry: DirEntry) -> Result<(), FirstP
 pub struct FirstPassImplArgs {
     /// The path of the TeX file to compile
     #[arg()]
-    tex_path: String,
+    pub tex_path: String,
 }
 
 impl FirstPassImplArgs {

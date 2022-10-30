@@ -2312,6 +2312,7 @@ dependencies = [
  "tectonic_bridge_core",
  "tectonic_errors",
  "tectonic_status_base",
+ "termcolor",
  "threadpool",
  "walkdir",
 ]
