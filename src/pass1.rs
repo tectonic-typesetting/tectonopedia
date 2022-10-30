@@ -2,24 +2,18 @@
 // Licensed under the MIT License
 
 use clap::Args;
-use std::ffi::OsString;
+use std::{ffi::OsString, path::PathBuf, process::Command};
 use tectonic::{
     config::PersistentConfig,
     driver::{PassSetting, ProcessingSessionBuilder},
     errors::{Error as OldError, SyncError},
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
-use tectonic_errors::prelude::*;
+use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::StatusBackend;
+use walkdir::DirEntry;
 
-#[derive(Args, Debug)]
-pub struct FirstPassImplArgs {
-    /// The path of the TeX file to compile
-    #[arg()]
-    tex_path: OsString,
-}
-
-enum FirstPassError {
+pub enum FirstPassError {
     /// Some kind of environmental error not specific to this particular input.
     /// We should abort the whole build because other jobs are probably going to
     /// fail too.
@@ -67,6 +61,31 @@ macro_rules! ostry {
             }
         }
     };
+}
+
+pub fn build_one_input(self_path: PathBuf, entry: DirEntry) -> Result<(), FirstPassError> {
+    let mut cmd = Command::new(&self_path);
+    cmd.arg("first-pass-impl");
+    cmd.arg(entry.path());
+
+    let s = gtry!(cmd
+        .status()
+        .context("failed to relaunch self as subcommand"));
+
+    if !s.success() {
+        return Err(FirstPassError::Specific(anyhow!(
+            "child failed specific test"
+        )));
+    }
+
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+pub struct FirstPassImplArgs {
+    /// The path of the TeX file to compile
+    #[arg()]
+    tex_path: OsString,
 }
 
 impl FirstPassImplArgs {

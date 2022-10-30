@@ -2,9 +2,11 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::process::Command;
-use tectonic::status::{termcolor::TermcolorStatusBackend, ChatterLevel, StatusBackend};
+use std::sync::mpsc::{channel, TryRecvError};
+use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
+use tectonic_status_base::{tt_error, ChatterLevel, StatusBackend};
+use threadpool::ThreadPool;
 use walkdir::{DirEntry, WalkDir};
 
 mod config;
@@ -31,7 +33,7 @@ struct ToplevelArgs {
 impl ToplevelArgs {
     fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         match self.action {
-            Action::Build(a) => a.exec(),
+            Action::Build(a) => a.exec(status),
             Action::FirstPassImpl(a) => a.exec(status),
         }
     }
@@ -50,11 +52,17 @@ struct BuildArgs {
 }
 
 impl BuildArgs {
-    fn exec(self) -> Result<()> {
+    fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         let self_path = atry!(
             std::env::current_exe();
             ["cannot obtain the path to the current executable"]
         );
+
+        let n_workers = 8; // !! make generic
+        let pool = ThreadPool::new(n_workers);
+        let (tx, rx) = channel();
+        let mut n_tasks = 0;
+        let mut n_failures = 0;
 
         for entry in WalkDir::new("txt").into_iter().filter_entry(is_tex_or_dir) {
             let entry = entry?;
@@ -63,18 +71,62 @@ impl BuildArgs {
                 continue;
             }
 
-            let mut cmd = Command::new(&self_path);
-            cmd.arg("first-pass-impl");
-            cmd.arg(entry.path());
+            let tx = tx.clone();
+            let sp = self_path.clone();
 
-            let s = atry!(
-                cmd.status();
-                ["failed to relaunch self as subcommand"]
-            );
+            pool.execute(move || {
+                tx.send(pass1::build_one_input(sp, entry))
+                    .expect("channel waits for pool result");
+            });
+            n_tasks += 1;
 
-            ensure!(s.success(), "self-subcommand failed");
+            // Deal with results as we're doing the walk, if there are any.
+
+            match rx.try_recv() {
+                Ok(result) => {
+                    match result {
+                        Ok(_) => {}
+
+                        Err(pass1::FirstPassError::General(e)) => {
+                            status.report_error(&e);
+                            n_failures += 1;
+                            tt_error!(status, "giving up early");
+                            break; // give up
+                        }
+
+                        Err(pass1::FirstPassError::Specific(e)) => {
+                            status.report_error(&e);
+                            n_failures += 1;
+                        }
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => unreachable!(),
+            }
         }
 
+        drop(tx);
+
+        for result in rx.iter() {
+            match result {
+                Ok(_) => {}
+
+                // At this point, we've already launched anything, so we can't
+                // give up early anymore.
+                Err(pass1::FirstPassError::General(e))
+                | Err(pass1::FirstPassError::Specific(e)) => {
+                    status.report_error(&e);
+                    n_failures += 1;
+                }
+            }
+        }
+
+        ensure!(
+            n_failures == 0,
+            "{} out of {} build inputs failed",
+            n_failures,
+            n_tasks
+        );
         Ok(())
     }
 }
