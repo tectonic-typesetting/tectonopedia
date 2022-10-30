@@ -1,39 +1,7 @@
 % Copyright 2021-2022 the Tectonic Project
 % Licensed under the MIT License
 %
-% Tectonic Default (HTML) User Experience document class
-%
-\NeedsTeXFormat{LaTeX2e}[1995/12/01]
-\ProvidesClass{tdux}[2021/10/19 Tectonic Default User Experience]
-%
-\ExecuteOptions{}
-\ProcessOptions
-%
-\LoadClass{article}
-%
-\RequirePackage{fontspec}
-\setmainfont{texgyrepagella}[%
-  Ligatures = TeX,
-  Extension = .otf,
-  UprightFont = *-regular,
-  BoldFont = *-bold,
-  ItalicFont = *-italic,
-  BoldItalicFont = *-bolditalic,
-]
-\setmonofont{SourceCodePro}[%
-  Ligatures = TeX,
-  Extension = .otf,
-  UprightFont = *-Regular,
-  BoldFont = *-Bold,
-  ItalicFont = *-RegularIt,
-  BoldItalicFont = *-BoldIt,
-]
-%
-\RequirePackage{amsmath}
-\RequirePackage{unicode-math}
-\setmathfont{texgyrepagella-math.otf}
-%
-\RequirePackage{hyperref}
+% Tectonic Default (HTML) User Experience macros
 %
 % \tduxAddTemplate{TMPL-FILENAME}
 %   Register an HTML template to be included in the Tera templating session. Templates can
@@ -110,6 +78,3 @@
   \tduxSetupOutput{tdux-fonts.css}{tdux-fonts.css}
   \tduxEmit
 }
-%
-\tduxAddTemplate{tdux-standalone.html}
-\tduxSetTemplateVariable{tduxDocumentTitle}{Set tduxDocumentTitle}

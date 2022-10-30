@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use std::sync::mpsc::{channel, TryRecvError};
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
-use tectonic_status_base::{tt_error, ChatterLevel, StatusBackend};
+use tectonic_status_base::{tt_error, tt_note, ChatterLevel, StatusBackend};
 use threadpool::ThreadPool;
 use walkdir::{DirEntry, WalkDir};
 
@@ -127,6 +127,7 @@ impl BuildArgs {
             n_failures,
             n_tasks
         );
+        tt_note!("pass 1: processed {} inputs", n_tasks);
         Ok(())
     }
 }
