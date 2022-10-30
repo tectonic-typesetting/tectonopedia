@@ -94,15 +94,13 @@ impl BuildArgs {
                     match result {
                         Ok(_) => {}
 
-                        Err(pass1::FirstPassError::General(e)) => {
-                            status.report_error(&e);
+                        Err(pass1::FirstPassError::General(_)) => {
                             n_failures += 1;
                             tt_error!(status, "giving up early");
                             break; // give up
                         }
 
-                        Err(pass1::FirstPassError::Specific(e)) => {
-                            status.report_error(&e);
+                        Err(pass1::FirstPassError::Specific(_)) => {
                             n_failures += 1;
                         }
                     }
@@ -120,9 +118,7 @@ impl BuildArgs {
 
                 // At this point, we've already launched anything, so we can't
                 // give up early anymore.
-                Err(pass1::FirstPassError::General(e))
-                | Err(pass1::FirstPassError::Specific(e)) => {
-                    status.report_error(&e);
+                Err(_) => {
                     n_failures += 1;
                 }
             }

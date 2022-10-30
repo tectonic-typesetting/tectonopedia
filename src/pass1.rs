@@ -21,19 +21,22 @@ use tectonic::{
     unstable_opts::UnstableOptions,
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
-use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::StatusBackend;
+use tectonic_errors::prelude::*;
+use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
-pub enum FirstPassError {
+use crate::worker_status::WorkerStatusBackend;
+
+#[derive(Debug)]
+pub enum FirstPassError<T> {
     /// Some kind of environmental error not specific to this particular input.
     /// We should abort the whole build because other jobs are probably going to
     /// fail too.
-    General(Error),
+    General(T),
 
     /// An error specific to this input. We'll fail this input, but keep on
     /// going overall to report as many problems as we can.
-    Specific(Error),
+    Specific(T),
 }
 
 /// Try something that returns an OldError, and report a General error if it fails.
@@ -75,29 +78,31 @@ macro_rules! ostry {
     };
 }
 
-/// Try something that returns a new Error, and report a Specific error if it fails.
-macro_rules! stry {
-    ($result:expr) => {
-        match $result {
-            Ok(v) => v,
-            Err(e) => {
-                let typecheck: Error = e.into();
-                return Err(FirstPassError::Specific(typecheck));
-            }
-        }
-    };
-}
+pub fn build_one_input(self_path: PathBuf, entry: DirEntry) -> Result<(), FirstPassError<()>> {
+    // This function is run in a fresh thread, so it needs to create its own
+    // status backend if it wants to report any information (because our status
+    // system is not thread-safe). It also needs to do that to provide context
+    // about the origin of any messages. It should fully report out any errors
+    // that it encounters.
+    let mut status =
+        Box::new(WorkerStatusBackend::new(entry.path().display())) as Box<dyn StatusBackend>;
 
-pub fn build_one_input(self_path: PathBuf, entry: DirEntry) -> Result<(), FirstPassError> {
     let mut cmd = Command::new(&self_path);
     cmd.arg("first-pass-impl")
         .arg(entry.path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped());
 
-    let mut child = gtry!(cmd.spawn().context("failed to relaunch self as TeX worker"));
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            tt_error!(status, "failed to relaunch self as TeX worker"; e.into());
+            return Err(FirstPassError::General(()));
+        }
+    };
+
     let stdout = BufReader::new(child.stdout.take().unwrap());
-    let mut error_is_general = false;
+    let mut error_type = FirstPassError::Specific(());
 
     for line in stdout.lines() {
         match line {
@@ -105,53 +110,41 @@ pub fn build_one_input(self_path: PathBuf, entry: DirEntry) -> Result<(), FirstP
                 if let Some(rest) = line.strip_prefix("pedia:") {
                     match rest {
                         "general-error" => {
-                            error_is_general = true;
+                            error_type = FirstPassError::General(());
                         }
                         _ => {
-                            eprintln!(
-                                "warning({}): unrecognized stdout message: {}",
-                                entry.path().display(),
-                                line
-                            );
+                            tt_warning!(status.as_mut(), "unrecognized stdout message: {}", line);
                         }
                     }
                 } else {
-                    eprintln!(
-                        "warning({}): unexpected stdout content: {}",
-                        entry.path().display(),
-                        line
-                    );
+                    tt_warning!(status.as_mut(), "unexpected stdout content: {}", line);
                 }
             }
 
             Err(e) => {
-                eprintln!(
-                    "warning({}): error reading stdout: {}",
-                    entry.path().display(),
-                    e
-                );
+                tt_warning!(status.as_mut(), "error reading worker stdout"; e.into());
             }
         }
     }
 
-    let status = stry!(child
-        .wait()
-        .context("failed to wait for TeX worker subprocess"));
+    let ec = match child.wait() {
+        Ok(c) => c,
+        Err(e) => {
+            tt_error!(status, "failed to wait() for TeX worker"; e.into());
+            return Err(error_type);
+        }
+    };
 
-    match (status.success(), error_is_general) {
-        (true, false) => Ok(()),
-        (true, true) => Err(FirstPassError::General(anyhow!(
-            "TeX worker for {} failed (but had a successful exit code?)",
-            entry.path().display()
-        ))),
-        (false, true) => Err(FirstPassError::General(anyhow!(
-            "TeX worker for {} failed",
-            entry.path().display()
-        ))),
-        (false, false) => Err(FirstPassError::Specific(anyhow!(
-            "TeX worker for {} failed",
-            entry.path().display()
-        ))),
+    match (ec.success(), &error_type) {
+        (true, FirstPassError::Specific(_)) => Ok(()), // <= the default
+        (true, FirstPassError::General(_)) => {
+            tt_warning!(
+                status.as_mut(),
+                "TeX worker had a successful exit code but reported failure"
+            );
+            Err(error_type)
+        }
+        (false, _) => Err(error_type),
     }
 }
 
@@ -176,7 +169,7 @@ impl FirstPassImplArgs {
         }
     }
 
-    fn inner(&self, status: &mut dyn StatusBackend) -> Result<(), FirstPassError> {
+    fn inner(&self, status: &mut dyn StatusBackend) -> Result<(), FirstPassError<Error>> {
         let config: PersistentConfig = ogtry!(PersistentConfig::open(false));
         let security = SecuritySettings::new(SecurityStance::MaybeAllowInsecures);
         let root = gtry!(crate::config::get_root());
