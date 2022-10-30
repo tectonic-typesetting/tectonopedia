@@ -2,10 +2,13 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::{ffi::OsString, process::Command};
+use std::process::Command;
 use tectonic::status::{termcolor::TermcolorStatusBackend, ChatterLevel, StatusBackend};
 use tectonic_errors::prelude::*;
 use walkdir::{DirEntry, WalkDir};
+
+mod config;
+mod pass1;
 
 fn main() {
     let args = ToplevelArgs::parse();
@@ -13,7 +16,7 @@ fn main() {
     let mut status =
         Box::new(TermcolorStatusBackend::new(ChatterLevel::Normal)) as Box<dyn StatusBackend>;
 
-    if let Err(e) = args.exec() {
+    if let Err(e) = args.exec(status.as_mut()) {
         status.report_error(&e);
         std::process::exit(1)
     }
@@ -26,10 +29,10 @@ struct ToplevelArgs {
 }
 
 impl ToplevelArgs {
-    fn exec(self) -> Result<()> {
+    fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         match self.action {
             Action::Build(a) => a.exec(),
-            Action::FirstPassImpl(a) => a.exec(),
+            Action::FirstPassImpl(a) => a.exec(status),
         }
     }
 }
@@ -37,7 +40,7 @@ impl ToplevelArgs {
 #[derive(Debug, Subcommand)]
 enum Action {
     Build(BuildArgs),
-    FirstPassImpl(FirstPassImplArgs),
+    FirstPassImpl(pass1::FirstPassImplArgs),
 }
 
 #[derive(Args, Debug)]
@@ -83,17 +86,4 @@ fn is_tex_or_dir(entry: &DirEntry) -> bool {
             .to_str()
             .map(|s| s.ends_with(".tex"))
             .unwrap_or(false)
-}
-
-#[derive(Args, Debug)]
-struct FirstPassImplArgs {
-    #[arg()]
-    tex_path: OsString,
-}
-
-impl FirstPassImplArgs {
-    fn exec(self) -> Result<()> {
-        println!("first pass impl: {}", self.tex_path.to_str().unwrap());
-        Ok(())
-    }
 }
