@@ -2,18 +2,16 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::{
-    sync::mpsc::{channel, TryRecvError},
-    time::Instant,
-};
+use std::time::Instant;
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
-use tectonic_status_base::{tt_error, tt_note, ChatterLevel, StatusBackend};
-use threadpool::ThreadPool;
+use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
 mod config;
 mod inputs;
 mod pass1;
+#[macro_use]
+mod texworker;
 mod worker_status;
 
 use worker_status::WorkerStatusBackend;
@@ -65,77 +63,9 @@ impl BuildArgs {
     fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         let t0 = Instant::now();
 
-        let self_path = atry!(
-            std::env::current_exe();
-            ["cannot obtain the path to the current executable"]
-        );
+        let ninputs = texworker::process_inputs::<pass1::Pass1Driver, _>(|_| {}, status)?;
 
-        let n_workers = 8; // !! make generic
-        let pool = ThreadPool::new(n_workers);
-        let (tx, rx) = channel();
-        let mut n_tasks = 0;
-        let mut n_failures = 0;
-
-        for entry in inputs::InputIterator::new() {
-            let entry = atry!(
-                entry;
-                ["error while walking input tree"]
-            );
-
-            let tx = tx.clone();
-            let sp = self_path.clone();
-
-            pool.execute(move || {
-                tx.send(pass1::build_one_input(sp, entry))
-                    .expect("channel waits for pool result");
-            });
-            n_tasks += 1;
-
-            // Deal with results as we're doing the walk, if there are any.
-
-            match rx.try_recv() {
-                Ok(result) => {
-                    match result {
-                        Ok(_) => {}
-
-                        Err(pass1::FirstPassError::General(_)) => {
-                            n_failures += 1;
-                            tt_error!(status, "giving up early");
-                            break; // give up
-                        }
-
-                        Err(pass1::FirstPassError::Specific(_)) => {
-                            n_failures += 1;
-                        }
-                    }
-                }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => unreachable!(),
-            }
-        }
-
-        drop(tx);
-
-        for result in rx.iter() {
-            match result {
-                Ok(_) => {}
-
-                // At this point, we've already launched anything, so we can't
-                // give up early anymore.
-                Err(_) => {
-                    n_failures += 1;
-                }
-            }
-        }
-
-        ensure!(
-            n_failures == 0,
-            "{} out of {} build inputs failed",
-            n_failures,
-            n_tasks
-        );
-
-        tt_note!(status, "pass 1: processed {} inputs", n_tasks);
+        tt_note!(status, "pass 1: processed {} inputs", ninputs);
 
         // Indexing goes here!
 
