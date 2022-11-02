@@ -2,14 +2,17 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::sync::mpsc::{channel, TryRecvError};
+use std::{
+    sync::mpsc::{channel, TryRecvError},
+    time::Instant,
+};
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, tt_note, ChatterLevel, StatusBackend};
 use threadpool::ThreadPool;
-use walkdir::{DirEntry, WalkDir};
 
 mod config;
+mod inputs;
 mod pass1;
 mod worker_status;
 
@@ -60,6 +63,8 @@ struct BuildArgs {
 
 impl BuildArgs {
     fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+        let t0 = Instant::now();
+
         let self_path = atry!(
             std::env::current_exe();
             ["cannot obtain the path to the current executable"]
@@ -71,12 +76,11 @@ impl BuildArgs {
         let mut n_tasks = 0;
         let mut n_failures = 0;
 
-        for entry in WalkDir::new("txt").into_iter().filter_entry(is_tex_or_dir) {
-            let entry = entry?;
-
-            if entry.file_type().is_dir() {
-                continue;
-            }
+        for entry in inputs::InputIterator::new() {
+            let entry = atry!(
+                entry;
+                ["error while walking input tree"]
+            );
 
             let tx = tx.clone();
             let sp = self_path.clone();
@@ -130,16 +134,16 @@ impl BuildArgs {
             n_failures,
             n_tasks
         );
+
         tt_note!(status, "pass 1: processed {} inputs", n_tasks);
+
+        // Indexing goes here!
+
+        tt_note!(
+            status,
+            "build took {:.1} seconds",
+            t0.elapsed().as_secs_f32()
+        );
         Ok(())
     }
-}
-
-fn is_tex_or_dir(entry: &DirEntry) -> bool {
-    entry.file_type().is_dir()
-        || entry
-            .file_name()
-            .to_str()
-            .map(|s| s.ends_with(".tex"))
-            .unwrap_or(false)
 }
