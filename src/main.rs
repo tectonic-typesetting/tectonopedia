@@ -10,6 +10,7 @@ use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 mod config;
 mod inputs;
 mod pass1;
+mod pass2;
 #[macro_use]
 mod texworker;
 mod worker_status;
@@ -21,6 +22,9 @@ fn main() {
 
     let mut status = match &args.action {
         Action::FirstPassImpl(a) => {
+            Box::new(WorkerStatusBackend::new(&a.tex_path)) as Box<dyn StatusBackend>
+        }
+        Action::SecondPassImpl(a) => {
             Box::new(WorkerStatusBackend::new(&a.tex_path)) as Box<dyn StatusBackend>
         }
         _ => Box::new(TermcolorStatusBackend::new(ChatterLevel::Normal)) as Box<dyn StatusBackend>,
@@ -43,6 +47,7 @@ impl ToplevelArgs {
         match self.action {
             Action::Build(a) => a.exec(status),
             Action::FirstPassImpl(a) => a.exec(status),
+            Action::SecondPassImpl(a) => a.exec(status),
         }
     }
 }
@@ -51,6 +56,7 @@ impl ToplevelArgs {
 enum Action {
     Build(BuildArgs),
     FirstPassImpl(pass1::FirstPassImplArgs),
+    SecondPassImpl(pass2::SecondPassImplArgs),
 }
 
 #[derive(Args, Debug)]
@@ -64,10 +70,12 @@ impl BuildArgs {
         let t0 = Instant::now();
 
         let ninputs = texworker::process_inputs::<pass1::Pass1Driver, _>(|_| {}, status)?;
-
-        tt_note!(status, "pass 1: processed {} inputs", ninputs);
+        tt_note!(status, "pass 1: complete - processed {} inputs", ninputs);
 
         // Indexing goes here!
+
+        texworker::process_inputs::<pass2::Pass2Driver, _>(|_| {}, status)?;
+        tt_note!(status, "pass 2: complete");
 
         tt_note!(
             status,
