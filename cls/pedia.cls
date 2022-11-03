@@ -53,7 +53,10 @@ Dhref #1}#2\special{tdux:me a}%
 %
 % \entry{TITLE}{OUTFILE}
 %  Define an entry
+\makeatletter
 \newcommand{\entry}[2]{%
   #1
   \tduxSetupOutput{template.html}{#2.html}
+  \write\@auxout{\gdef\string\pediaEntrypoint{#2.html}}
 }
+\makeatother

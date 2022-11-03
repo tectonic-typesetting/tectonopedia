@@ -1,3 +1,5 @@
-/build
-/dist
-/target
+/.parcel-cache/
+/build/
+/dist/
+/node_modules/
+/target/

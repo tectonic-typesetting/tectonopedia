@@ -1,0 +1,13 @@
+{
+  "browserslist": "> 0.5%, last 2 versions, not dead",
+  "devDependencies": {
+    "@parcel/transformer-sass": "^2.7",
+    "parcel": "^2.7"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "parcel build build/_all.html",
+    "serve": "parcel serve build/_all.html"
+  },
+  "dependencies": {}
+}

@@ -2,7 +2,7 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::time::Instant;
+use std::{fs::File, io::Write, time::Instant};
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
@@ -74,7 +74,19 @@ impl BuildArgs {
 
         // Indexing goes here!
 
-        texworker::process_inputs::<pass2::Pass2Driver, _>(|_| {}, status)?;
+        let mut entrypoints_file = atry!(
+            File::create("build/_all.html");
+            ["error creating output `build/_all.html`"]
+        );
+
+        texworker::process_inputs::<pass2::Pass2Driver, _>(
+            |info| {
+                for ep in info.entrypoints {
+                    let _r = writeln!(entrypoints_file, "<a href=\"{}\"></a>", ep);
+                }
+            },
+            status,
+        )?;
         tt_note!(status, "pass 2: complete");
 
         tt_note!(

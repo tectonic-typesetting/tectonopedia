@@ -4,7 +4,10 @@
 //! "Pass 1"
 
 use clap::Args;
-use std::process::Command;
+use std::{
+    io::{BufRead, BufReader, Cursor},
+    process::Command,
+};
 use tectonic::{
     config::PersistentConfig,
     driver::{OutputFormat, PassSetting, ProcessingSessionBuilder},
@@ -17,26 +20,32 @@ use tectonic_status_base::{tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
-    gtry, ogtry, ostry,
+    gtry, ogtry, ostry, stry,
     texworker::{WorkerDriver, WorkerError, WorkerResultExt},
 };
 
 #[derive(Debug, Default)]
-pub struct Pass2Driver {}
+pub struct Pass2Driver {
+    pub entrypoints: Vec<String>,
+}
 
 impl WorkerDriver for Pass2Driver {
-    type Item = ();
+    type Item = Self;
 
     fn init_command(&self, cmd: &mut Command, entry: &DirEntry) {
         cmd.arg("second-pass-impl").arg(entry.path());
     }
 
     fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
-        tt_warning!(status, "unrecognized pass2 stdout record: {}", record);
+        if let Some(path) = record.strip_prefix("entrypoint ") {
+            self.entrypoints.push(path.to_owned());
+        } else {
+            tt_warning!(status, "unrecognized pass2 stdout record: {}", record);
+        }
     }
 
-    fn finish(self) -> () {
-        ()
+    fn finish(self) -> Self {
+        self
     }
 }
 
@@ -93,6 +102,25 @@ impl SecondPassImplArgs {
 
         // Print more details in the error case here?
         ostry!(sess.run(status));
+
+        // Parse the .aux file
+
+        let mut files = sess.into_file_data();
+
+        let aux = stry!(files
+            .remove("texput.aux")
+            .ok_or_else(|| anyhow!("no aux file output")));
+        let aux = BufReader::new(Cursor::new(&aux.data));
+
+        for line in aux.lines() {
+            let line = stry!(line.context("error reading line of .aux output"));
+
+            if let Some(rest) = line.strip_prefix("\\gdef \\pediaEntrypoint{") {
+                if let Some(path) = rest.split('}').next() {
+                    println!("pedia:entrypoint {}", path);
+                }
+            }
+        }
 
         Ok(())
     }

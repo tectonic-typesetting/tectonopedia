@@ -94,6 +94,20 @@ macro_rules! ostry {
     };
 }
 
+/// Try something that returns a new Error, and report a Specific error if it fails.
+#[macro_export]
+macro_rules! stry {
+    ($result:expr) => {
+        match $result {
+            Ok(v) => v,
+            Err(e) => {
+                let typecheck: Error = e.into();
+                return Err(WorkerError::Specific(typecheck));
+            }
+        }
+    };
+}
+
 pub trait WorkerDriver: Default {
     /// The type that will be returned to the driver thread.
     type Item: Send + 'static;
