@@ -7,12 +7,12 @@ use clap::Args;
 use std::process::Command;
 use tectonic::{
     config::PersistentConfig,
-    driver::{PassSetting, ProcessingSessionBuilder},
+    driver::{OutputFormat, PassSetting, ProcessingSessionBuilder},
     errors::{Error as OldError, SyncError},
     unstable_opts::UnstableOptions,
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
-use tectonic_errors::prelude::*;
+use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
@@ -64,6 +64,11 @@ impl SecondPassImplArgs {
             ..UnstableOptions::default()
         };
 
+        let mut out_dir = root.clone();
+        out_dir.push("build");
+        gtry!(std::fs::create_dir_all(&out_dir)
+            .with_context(|| format!("cannot create output directory `{}`", out_dir.display())));
+
         let input = format!(
             "\\input{{preamble}} \
             \\input{{{}}} \
@@ -77,11 +82,12 @@ impl SecondPassImplArgs {
             .build_date(std::time::SystemTime::now())
             .bundle(ogtry!(config.default_bundle(false, status)))
             .format_name("latex")
-            .filesystem_root(root)
+            .output_format(OutputFormat::Html)
+            .filesystem_root(&root)
             .unstables(unstables)
             .format_cache_path(ogtry!(config.format_cache_path()))
-            .do_not_write_output_files()
-            .pass(PassSetting::Tex);
+            .output_dir(&out_dir)
+            .pass(PassSetting::Default);
 
         let mut sess = ogtry!(sess.create(status));
 

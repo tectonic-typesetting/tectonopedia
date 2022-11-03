@@ -38,7 +38,7 @@
 % Get the generic TDUX macros
 \input{tdux.tex}
 %
-\tduxAddTemplate{tdux-standalone.html}
+\tduxAddTemplate{template.html}
 \tduxSetTemplateVariable{tduxDocumentTitle}{Set tduxDocumentTitle}
 %
 \let\justTeX=\TeX
@@ -51,8 +51,9 @@ Dtarget _blank^^J%
 Dhref #1}#2\special{tdux:me a}%
 }
 %
-% \entry{TITLE}
+% \entry{TITLE}{OUTFILE}
 %  Define an entry
-\newcommand{\entry}[1]{%
+\newcommand{\entry}[2]{%
   #1
+  \tduxSetupOutput{template.html}{#2.html}
 }
