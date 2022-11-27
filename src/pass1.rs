@@ -4,39 +4,53 @@
 //! "Pass 1"
 
 use clap::Args;
-use std::process::Command;
+use std::{
+    io::{BufRead, BufReader, Cursor},
+    process::{ChildStdin, Command},
+};
 use tectonic::{
     config::PersistentConfig,
-    driver::{PassSetting, ProcessingSessionBuilder},
+    driver::{OutputFormat, PassSetting, ProcessingSessionBuilder},
     errors::{Error as OldError, SyncError},
     unstable_opts::UnstableOptions,
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
-use tectonic_errors::prelude::*;
+use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
-    gtry, ogtry, ostry,
+    gtry, ogtry, ostry, stry,
     texworker::{WorkerDriver, WorkerError, WorkerResultExt},
 };
 
 #[derive(Debug, Default)]
-pub struct Pass1Driver {}
+pub struct Pass1Driver {
+    assets: String,
+}
 
 impl WorkerDriver for Pass1Driver {
-    type Item = ();
+    type Item = String;
 
     fn init_command(&self, cmd: &mut Command, entry: &DirEntry) {
         cmd.arg("first-pass-impl").arg(entry.path());
     }
 
-    fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
-        tt_warning!(status, "unrecognized pass1 stdout record: {}", record);
+    fn send_stdin(&self, _stdin: &mut ChildStdin) -> Result<()> {
+        Ok(())
     }
 
-    fn finish(self) -> () {
-        ()
+    fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
+        if let Some(rest) = record.strip_prefix("assets ") {
+            self.assets.push_str(rest);
+            self.assets.push('\n');
+        } else {
+            tt_warning!(status, "unrecognized pass1 stdout record: {}", record);
+        }
+    }
+
+    fn finish(self) -> Self::Item {
+        self.assets
     }
 }
 
@@ -77,16 +91,32 @@ impl FirstPassImplArgs {
             .build_date(std::time::SystemTime::now())
             .bundle(ogtry!(config.default_bundle(false, status)))
             .format_name("latex")
+            .output_format(OutputFormat::Html)
             .filesystem_root(root)
             .unstables(unstables)
             .format_cache_path(ogtry!(config.format_cache_path()))
-            .do_not_write_output_files()
-            .pass(PassSetting::Tex);
+            .html_emit_files(false)
+            .html_assets_spec_path("assets.json")
+            .pass(PassSetting::Default);
 
         let mut sess = ogtry!(sess.create(status));
 
         // Print more details in the error case here?
         ostry!(sess.run(status));
+
+        // Print out the assets info
+
+        let mut files = sess.into_file_data();
+
+        let assets = stry!(files
+            .remove("assets.json")
+            .ok_or_else(|| anyhow!("no `assets.json` file output")));
+        let assets = BufReader::new(Cursor::new(&assets.data));
+
+        for line in assets.lines() {
+            let line = stry!(line.context("error reading line of `assets.json` output"));
+            println!("pedia:assets {}", line);
+        }
 
         Ok(())
     }

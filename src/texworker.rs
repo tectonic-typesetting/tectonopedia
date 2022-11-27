@@ -11,7 +11,7 @@
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{ChildStdin, Command, Stdio},
     sync::mpsc::{channel, TryRecvError},
 };
 use tectonic_errors::prelude::*;
@@ -108,13 +108,16 @@ macro_rules! stry {
     };
 }
 
-pub trait WorkerDriver: Default {
+pub trait WorkerDriver: Send {
     /// The type that will be returned to the driver thread.
     type Item: Send + 'static;
 
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
     fn init_command(&self, cmd: &mut Command, entry: &DirEntry);
+
+    /// Send information to the subcommand over its standard input.
+    fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()>;
 
     /// Process a line of output emitted by the worker process.
     fn process_output_record(&mut self, line: &str, status: &mut dyn StatusBackend);
@@ -139,7 +142,7 @@ fn process_one_input<W: WorkerDriver>(
 
     let mut cmd = Command::new(&self_path);
     driver.init_command(&mut cmd, &entry);
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped());
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -148,6 +151,19 @@ fn process_one_input<W: WorkerDriver>(
             return Err(WorkerError::General(()));
         }
     };
+
+    // First, send input over stdin. It will be closed when we drop the handle.
+
+    {
+        let mut stdin = child.stdin.take().unwrap();
+
+        if let Err(e) = driver.send_stdin(&mut stdin) {
+            tt_error!(status, "failed to send input to TeX worker"; e.into());
+            return Err(WorkerError::Specific(()));
+        }
+    }
+
+    // Now read results from stdout.
 
     let stdout = BufReader::new(child.stdout.take().unwrap());
     let mut error_type = WorkerError::Specific(());
@@ -196,12 +212,14 @@ fn process_one_input<W: WorkerDriver>(
     }
 }
 
-pub fn process_inputs<W: WorkerDriver, F>(
-    mut cb: F,
+pub fn process_inputs<W: WorkerDriver + 'static, Ff, Fcb>(
+    mut factory: Ff,
+    mut cb: Fcb,
     status: &mut dyn StatusBackend,
 ) -> Result<usize>
 where
-    F: FnMut(W::Item),
+    Ff: FnMut() -> W,
+    Fcb: FnMut(W::Item),
 {
     let self_path = atry!(
         std::env::current_exe();
@@ -223,9 +241,9 @@ where
 
         let tx = tx.clone();
         let sp = self_path.clone();
+        let driver = factory();
 
         pool.execute(move || {
-            let driver = W::default();
             tx.send(process_one_input(driver, sp, entry))
                 .expect("channel waits for pool result");
         });
@@ -264,9 +282,9 @@ where
                 cb(item);
             }
 
-            // At this point, we've already launched anything, so we can't give
-            // up early anymore; and the child process or inner callback should
-            // have displayed the error.
+            // At this point, we've already launched everything, so we can't
+            // give up early anymore; and the child process or inner callback
+            // should have displayed the error.
             Err(_) => {
                 n_failures += 1;
             }

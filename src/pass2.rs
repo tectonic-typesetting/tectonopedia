@@ -6,7 +6,7 @@
 use clap::Args;
 use std::{
     io::{BufRead, BufReader, Cursor},
-    process::Command,
+    process::{ChildStdin, Command},
 };
 use tectonic::{
     config::PersistentConfig,
@@ -15,6 +15,7 @@ use tectonic::{
     unstable_opts::UnstableOptions,
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
+use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
 use walkdir::DirEntry;
@@ -24,9 +25,19 @@ use crate::{
     texworker::{WorkerDriver, WorkerError, WorkerResultExt},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Pass2Driver {
+    assets: AssetSpecification,
     pub entrypoints: Vec<String>,
+}
+
+impl Pass2Driver {
+    pub fn new(assets: AssetSpecification) -> Self {
+        Pass2Driver {
+            assets,
+            entrypoints: Default::default(),
+        }
+    }
 }
 
 impl WorkerDriver for Pass2Driver {
@@ -34,6 +45,10 @@ impl WorkerDriver for Pass2Driver {
 
     fn init_command(&self, cmd: &mut Command, entry: &DirEntry) {
         cmd.arg("second-pass-impl").arg(entry.path());
+    }
+
+    fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()> {
+        self.assets.save(stdin).map_err(|e| e.into())
     }
 
     fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
@@ -62,6 +77,21 @@ impl SecondPassImplArgs {
     }
 
     fn inner(&self, status: &mut dyn StatusBackend) -> Result<(), WorkerError<Error>> {
+        // Read the asset specification from stdin
+
+        let assets = {
+            let mut assets = AssetSpecification::default();
+            let stdin = std::io::stdin().lock();
+
+            gtry!(assets
+                .add_from_saved(stdin)
+                .with_context(|| "unable to restore assets from stdin"));
+
+            assets
+        };
+
+        // Now we can do all of the other TeX-launching mumbo-jumbo.
+
         let config: PersistentConfig = ogtry!(PersistentConfig::open(false));
         let security = SecuritySettings::new(SecurityStance::MaybeAllowInsecures);
         let root = gtry!(crate::config::get_root());
@@ -92,6 +122,7 @@ impl SecondPassImplArgs {
             .bundle(ogtry!(config.default_bundle(false, status)))
             .format_name("latex")
             .output_format(OutputFormat::Html)
+            .html_precomputed_assets(assets)
             .filesystem_root(&root)
             .unstables(unstables)
             .format_cache_path(ogtry!(config.format_cache_path()))

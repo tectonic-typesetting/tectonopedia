@@ -43,6 +43,14 @@
   \special{tdux:provideFile #1 #2}
 }
 %
+% \tduxProvideSpecial{KIND}{DEST-PATH}
+%   Create a special output asset. KIND is the kind of output to create; currently
+%   the only supported value is "font-css". DEST-PATH is the path of the file to
+%   be crated in the output tree.
+\newcommand\tduxProvideSpecial[2]{%
+  \special{tdux:provideSpecial #1 #2}
+}
+%
 \AtBeginDocument{%
   \pagestyle{empty}
 
@@ -74,7 +82,7 @@
 }
 %
 \AtEndDocument{%
-  \special{tdux:contentFinished}
-  \tduxSetupOutput{tdux-fonts.css}{tdux-fonts.css}
   \tduxEmit
+  \special{tdux:contentFinished}
+  \tduxProvideSpecial{font-css}{tdux-fonts.css}
 }

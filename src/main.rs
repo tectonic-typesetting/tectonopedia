@@ -4,6 +4,7 @@
 use clap::{Args, Parser, Subcommand};
 use std::{fs::File, io::Write, time::Instant};
 use tectonic::status::termcolor::TermcolorStatusBackend;
+use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
@@ -69,7 +70,20 @@ impl BuildArgs {
     fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         let t0 = Instant::now();
 
-        let ninputs = texworker::process_inputs::<pass1::Pass1Driver, _>(|_| {}, status)?;
+        // First pass of indexing and gathering font/asset information.
+
+        let mut assets = AssetSpecification::default();
+
+        let ninputs = texworker::process_inputs(
+            pass1::Pass1Driver::default,
+            |asset_text| {
+                assets
+                    .add_from_saved(asset_text.as_bytes())
+                    .expect("failed to transfer assets JSON");
+            },
+            status,
+        )?;
+
         tt_note!(status, "pass 1: complete - processed {} inputs", ninputs);
 
         // Indexing goes here!
@@ -79,7 +93,8 @@ impl BuildArgs {
             ["error creating output `build/_all.html`"]
         );
 
-        texworker::process_inputs::<pass2::Pass2Driver, _>(
+        texworker::process_inputs(
+            || pass2::Pass2Driver::new(assets.clone()),
             |info| {
                 for ep in info.entrypoints {
                     let _r = writeln!(entrypoints_file, "<a href=\"{}\"></a>", ep);
