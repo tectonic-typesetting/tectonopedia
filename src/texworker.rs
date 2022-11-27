@@ -114,7 +114,10 @@ pub trait WorkerDriver: Send {
 
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
-    fn init_command(&self, cmd: &mut Command, entry: &DirEntry);
+    ///
+    /// *entry* is the information about hte input file. *task_num* is index
+    /// number of this particular processing task.
+    fn init_command(&self, cmd: &mut Command, entry: &DirEntry, task_num: usize);
 
     /// Send information to the subcommand over its standard input.
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()>;
@@ -131,6 +134,7 @@ fn process_one_input<W: WorkerDriver>(
     mut driver: W,
     self_path: PathBuf,
     entry: DirEntry,
+    n_tasks: usize,
 ) -> Result<W::Item, WorkerError<()>> {
     // This function is run in a fresh thread, so it needs to create its own
     // status backend if it wants to report any information (because our status
@@ -141,7 +145,7 @@ fn process_one_input<W: WorkerDriver>(
         Box::new(WorkerStatusBackend::new(entry.path().display())) as Box<dyn StatusBackend>;
 
     let mut cmd = Command::new(&self_path);
-    driver.init_command(&mut cmd, &entry);
+    driver.init_command(&mut cmd, &entry, n_tasks);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     let mut child = match cmd.spawn() {
@@ -244,7 +248,7 @@ where
         let driver = factory();
 
         pool.execute(move || {
-            tx.send(process_one_input(driver, sp, entry))
+            tx.send(process_one_input(driver, sp, entry, n_tasks))
                 .expect("channel waits for pool result");
         });
         n_tasks += 1;

@@ -56,7 +56,7 @@ Dhref #1}#2\special{tdux:me a}%
 \makeatletter
 \newcommand{\entry}[2]{%
   #1
-  \tduxSetupOutput{template.html}{#2.html}
-  \write\@auxout{\gdef\string\pediaEntrypoint{#2.html}}
+  \tduxSetupOutput{template.html}{e/#2/index.html}
+  \write\@auxout{\gdef\string\pediaEntrypoint{e/#2/index.html}}
 }
 \makeatother

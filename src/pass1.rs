@@ -32,7 +32,7 @@ pub struct Pass1Driver {
 impl WorkerDriver for Pass1Driver {
     type Item = String;
 
-    fn init_command(&self, cmd: &mut Command, entry: &DirEntry) {
+    fn init_command(&self, cmd: &mut Command, entry: &DirEntry, _task_num: usize) {
         cmd.arg("first-pass-impl").arg(entry.path());
     }
 

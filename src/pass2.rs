@@ -43,8 +43,12 @@ impl Pass2Driver {
 impl WorkerDriver for Pass2Driver {
     type Item = Self;
 
-    fn init_command(&self, cmd: &mut Command, entry: &DirEntry) {
+    fn init_command(&self, cmd: &mut Command, entry: &DirEntry, task_num: usize) {
         cmd.arg("second-pass-impl").arg(entry.path());
+
+        if task_num == 0 {
+            cmd.arg("--first");
+        }
     }
 
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()> {
@@ -69,6 +73,10 @@ pub struct SecondPassImplArgs {
     /// The path of the TeX file to compile
     #[arg()]
     pub tex_path: String,
+
+    /// If this is the first TeX build in the session.
+    #[arg(long)]
+    pub first: bool,
 }
 
 impl SecondPassImplArgs {
@@ -77,7 +85,7 @@ impl SecondPassImplArgs {
     }
 
     fn inner(&self, status: &mut dyn StatusBackend) -> Result<(), WorkerError<Error>> {
-        // Read the asset specification from stdin
+        // Read the asset specification from stdin.
 
         let assets = {
             let mut assets = AssetSpecification::default();
@@ -128,6 +136,13 @@ impl SecondPassImplArgs {
             .format_cache_path(ogtry!(config.format_cache_path()))
             .output_dir(&out_dir)
             .pass(PassSetting::Default);
+
+        if !self.first {
+            // For the first output, we leave the default configuration to emit
+            // the assets. For all other outputs, we use this option to prevent
+            // Tectonic from redundantly emitting the asset files.
+            sess.html_assets_spec_path("assets.json");
+        }
 
         let mut sess = ogtry!(sess.create(status));
 
