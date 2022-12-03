@@ -23,6 +23,7 @@
 %   Embed a \special in the output indicating that the current output file
 %   should be emitted.
 \newcommand\tduxEmit{%
+  \par % make sure we finish any paragraph in progress
   \special{tdux:emit}
 }
 %
@@ -50,6 +51,10 @@
 \newcommand\tduxProvideSpecial[2]{%
   \special{tdux:provideSpecial #1 #2}
 }
+%
+% Set up paragraph tagging
+\AddToHook{para/begin}{\special{tdux:mfs div^^JCtdux-p}}
+\AddToHook{para/end}{\special{tdux:me div}}
 %
 \AtBeginDocument{%
   \pagestyle{empty}
