@@ -8,6 +8,5 @@
   "scripts": {
     "build": "parcel build build/_all.html",
     "serve": "parcel serve build/_all.html"
-  },
-  "dependencies": {}
+  }
 }
