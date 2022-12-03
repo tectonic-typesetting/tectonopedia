@@ -4,10 +4,15 @@
 // with Parcel.
 
 const gulp = require("gulp");
+const validator = require("gulp-html");
 const formatHtml = require("gulp-format-html");
 
-function views () {
-  return gulp.src("build/**/*.html").pipe(formatHtml()).pipe(gulp.dest("pretty"));
+function views() {
+  return gulp
+    .src("build/**/*.html", { "ignore": ["build/_all.html"] })
+    .pipe(validator())
+    .pipe(formatHtml())
+    .pipe(gulp.dest("pretty"));
 }
 
 exports.default = gulp.series(views);

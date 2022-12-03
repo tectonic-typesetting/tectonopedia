@@ -4,6 +4,7 @@
     "@parcel/transformer-sass": "^2.7",
     "gulp": "^4.0.2",
     "gulp-format-html": "^1.2.7",
+    "gulp-html": "^5.0.0",
     "parcel": "^2.7"
   },
   "license": "MIT",
