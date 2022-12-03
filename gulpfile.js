@@ -11,7 +11,9 @@ function views() {
   return gulp
     .src("build/**/*.html", { "ignore": ["build/_all.html"] })
     .pipe(validator())
-    .pipe(formatHtml())
+    .pipe(formatHtml({
+      "wrap_line_length": 80
+    }))
     .pipe(gulp.dest("pretty"));
 }
 
