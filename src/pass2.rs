@@ -149,19 +149,19 @@ impl SecondPassImplArgs {
         // Print more details in the error case here?
         ostry!(sess.run(status));
 
-        // Parse the .aux file
+        // Parse the pedia.txt metadata file
 
         let mut files = sess.into_file_data();
 
-        let aux = stry!(files
-            .remove("texput.aux")
-            .ok_or_else(|| anyhow!("no aux file output")));
-        let aux = BufReader::new(Cursor::new(&aux.data));
+        let metadata = stry!(files
+            .remove("pedia.txt")
+            .ok_or_else(|| anyhow!("no `pedia.txt` file output")));
+        let metadata = BufReader::new(Cursor::new(&metadata.data));
 
-        for line in aux.lines() {
-            let line = stry!(line.context("error reading line of .aux output"));
+        for line in metadata.lines() {
+            let line = stry!(line.context("error reading line of `pedia.txt` output"));
 
-            if let Some(rest) = line.strip_prefix("\\gdef \\pediaEntrypoint{") {
+            if let Some(rest) = line.strip_prefix("\\pediaEntrypoint{") {
                 if let Some(path) = rest.split('}').next() {
                     println!("pedia:entrypoint {}", path);
                 }

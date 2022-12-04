@@ -40,6 +40,9 @@
 %
 \tduxAddTemplate{template.html}
 \tduxSetTemplateVariable{tduxDocumentTitle}{Set tduxDocumentTitle}
+% Logging indexing metadata
+\newwrite\pediaIndex
+\openout\pediaIndex=pedia.txt
 %
 \let\justTeX=\TeX
 \def\TeX{\special{tdux:cs math}\justTeX\special{tdux:ce math}}
@@ -57,6 +60,6 @@ Dhref #1}#2\special{tdux:me a}%
 \newcommand{\entry}[2]{%
   #1
   \tduxSetupOutput{template.html}{e/#2/index.html}
-  \write\@auxout{\gdef\string\pediaEntrypoint{e/#2/index.html}}
+  \write\pediaIndex{\string\pediaEntrypoint{e/#2/index.html}}
 }
 \makeatother
