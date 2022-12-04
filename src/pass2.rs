@@ -139,9 +139,9 @@ impl SecondPassImplArgs {
 
         if !self.first {
             // For the first output, we leave the default configuration to emit
-            // the assets. For all other outputs, we use this option to prevent
-            // Tectonic from redundantly emitting the asset files.
-            sess.html_assets_spec_path("assets.json");
+            // the assets. For all other outputs, we want Tectonic to emit
+            // the templated HTML outputs, but not the assets (font files, etc.).
+            sess.html_emit_assets(false);
         }
 
         let mut sess = ogtry!(sess.create(status));

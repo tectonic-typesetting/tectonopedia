@@ -92,6 +92,7 @@ impl FirstPassImplArgs {
             .bundle(ogtry!(config.default_bundle(false, status)))
             .format_name("latex")
             .output_format(OutputFormat::Html)
+            .do_not_write_output_files()
             .filesystem_root(root)
             .unstables(unstables)
             .format_cache_path(ogtry!(config.format_cache_path()))
