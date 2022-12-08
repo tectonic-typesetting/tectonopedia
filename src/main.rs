@@ -2,9 +2,9 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::{fs::File, io::Write, time::Instant};
+use std::{fs::File, time::Instant};
+use string_interner::StringInterner;
 use tectonic::status::termcolor::TermcolorStatusBackend;
-use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
@@ -17,6 +17,8 @@ mod texworker;
 mod worker_status;
 
 use worker_status::WorkerStatusBackend;
+
+use string_interner::DefaultSymbol as InputId;
 
 fn main() {
     let args = ToplevelArgs::parse();
@@ -72,36 +74,21 @@ impl BuildArgs {
 
         // First pass of indexing and gathering font/asset information.
 
-        let mut assets = AssetSpecification::default();
-
-        let ninputs = texworker::process_inputs(
-            pass1::Pass1Driver::default,
-            |asset_text| {
-                assets
-                    .add_from_saved(asset_text.as_bytes())
-                    .expect("failed to transfer assets JSON");
-            },
-            status,
-        )?;
-
+        let mut interner = StringInterner::default();
+        let mut p1r = pass1::Pass1Reducer::default();
+        let ninputs = texworker::reduce_inputs(&mut p1r, &mut interner, status)?;
         tt_note!(status, "pass 1: complete - processed {} inputs", ninputs);
+        let assets = p1r.into_assets();
 
         // Indexing goes here!
 
-        let mut entrypoints_file = atry!(
+        let entrypoints_file = atry!(
             File::create("build/_all.html");
             ["error creating output `build/_all.html`"]
         );
 
-        texworker::process_inputs(
-            || pass2::Pass2Driver::new(assets.clone()),
-            |info| {
-                for ep in info.entrypoints {
-                    let _r = writeln!(entrypoints_file, "<a href=\"{}\"></a>", ep);
-                }
-            },
-            status,
-        )?;
+        let mut p2r = pass2::Pass2Reducer::new(assets, entrypoints_file);
+        texworker::reduce_inputs(&mut p2r, &mut interner, status)?;
         tt_note!(status, "pass 2: complete");
 
         tt_note!(

@@ -14,12 +14,13 @@ use std::{
     process::{ChildStdin, Command, Stdio},
     sync::mpsc::{channel, TryRecvError},
 };
+use string_interner::StringInterner;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use threadpool::ThreadPool;
 use walkdir::DirEntry;
 
-use crate::worker_status::WorkerStatusBackend;
+use crate::{worker_status::WorkerStatusBackend, InputId};
 
 #[derive(Debug)]
 pub enum WorkerError<T> {
@@ -134,8 +135,9 @@ fn process_one_input<W: WorkerDriver>(
     mut driver: W,
     self_path: PathBuf,
     entry: DirEntry,
+    id: InputId,
     n_tasks: usize,
-) -> Result<W::Item, WorkerError<()>> {
+) -> Result<(InputId, W::Item), WorkerError<()>> {
     // This function is run in a fresh thread, so it needs to create its own
     // status backend if it wants to report any information (because our status
     // system is not thread-safe). It also needs to do that to provide context
@@ -204,7 +206,7 @@ fn process_one_input<W: WorkerDriver>(
     };
 
     match (ec.success(), &error_type) {
-        (true, WorkerError::Specific(_)) => Ok(driver.finish()), // <= the default
+        (true, WorkerError::Specific(_)) => Ok((id, driver.finish())), // <= the default
         (true, WorkerError::General(_)) => {
             tt_warning!(
                 status.as_mut(),
@@ -216,15 +218,27 @@ fn process_one_input<W: WorkerDriver>(
     }
 }
 
-pub fn process_inputs<W: WorkerDriver + 'static, Ff, Fcb>(
-    mut factory: Ff,
-    mut cb: Fcb,
+pub trait TexReducer {
+    type Worker: WorkerDriver + 'static;
+
+    fn make_worker(&mut self) -> Self::Worker;
+
+    /// This function must print out any error if one is encountered. Due to the
+    /// parallelization approach, the returned result can indicate error
+    /// information but not be used to report any information.
+    fn process_item(
+        &mut self,
+        id: InputId,
+        item: <Self::Worker as WorkerDriver>::Item,
+        status: &mut dyn StatusBackend,
+    ) -> Result<(), WorkerError<()>>;
+}
+
+pub fn reduce_inputs<R: TexReducer>(
+    red: &mut R,
+    interner: &mut StringInterner,
     status: &mut dyn StatusBackend,
-) -> Result<usize>
-where
-    Ff: FnMut() -> W,
-    Fcb: FnMut(W::Item),
-{
+) -> Result<usize> {
     let self_path = atry!(
         std::env::current_exe();
         ["cannot obtain the path to the current executable"]
@@ -245,10 +259,11 @@ where
 
         let tx = tx.clone();
         let sp = self_path.clone();
-        let driver = factory();
+        let driver = red.make_worker();
+        let id = interner.get_or_intern(entry.path().display().to_string());
 
         pool.execute(move || {
-            tx.send(process_one_input(driver, sp, entry, n_tasks))
+            tx.send(process_one_input(driver, sp, entry, id, n_tasks))
                 .expect("channel waits for pool result");
         });
         n_tasks += 1;
@@ -257,10 +272,8 @@ where
 
         match rx.try_recv() {
             Ok(result) => {
-                match result {
-                    Ok(item) => {
-                        cb(item);
-                    }
+                match result.and_then(|t| red.process_item(t.0, t.1, status)) {
+                    Ok(_) => {}
 
                     Err(WorkerError::General(_)) => {
                         n_failures += 1;
@@ -281,17 +294,14 @@ where
     drop(tx);
 
     for result in rx.iter() {
-        match result {
-            Ok(item) => {
-                cb(item);
-            }
-
+        if result
+            .and_then(|t| red.process_item(t.0, t.1, status))
+            .is_err()
+        {
             // At this point, we've already launched everything, so we can't
             // give up early anymore; and the child process or inner callback
             // should have displayed the error.
-            Err(_) => {
-                n_failures += 1;
-            }
+            n_failures += 1;
         }
     }
 

@@ -5,7 +5,8 @@
 
 use clap::Args;
 use std::{
-    io::{BufRead, BufReader, Cursor},
+    fs::File,
+    io::{BufRead, BufReader, Cursor, Write},
     process::{ChildStdin, Command},
 };
 use tectonic::{
@@ -17,18 +18,64 @@ use tectonic::{
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_warning, StatusBackend};
+use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
     gtry, ogtry, ostry, stry,
-    texworker::{WorkerDriver, WorkerError, WorkerResultExt},
+    texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
+    InputId,
 };
+
+#[derive(Debug)]
+pub struct Pass2Reducer {
+    assets: AssetSpecification,
+    entrypoints_file: File,
+}
+
+impl TexReducer for Pass2Reducer {
+    type Worker = Pass2Driver;
+
+    fn make_worker(&mut self) -> Self::Worker {
+        Pass2Driver::new(self.assets.clone())
+    }
+
+    fn process_item(
+        &mut self,
+        id: InputId,
+        item: Pass2Driver,
+        status: &mut dyn StatusBackend,
+    ) -> Result<(), WorkerError<()>> {
+        if let Err(e) = self.process_item_inner(id, item) {
+            tt_error!(status, "failed to process pass 2 data"; e);
+            return Err(WorkerError::Specific(()));
+        }
+
+        Ok(())
+    }
+}
+
+impl Pass2Reducer {
+    pub fn new(assets: AssetSpecification, entrypoints_file: File) -> Self {
+        Pass2Reducer {
+            assets,
+            entrypoints_file,
+        }
+    }
+
+    fn process_item_inner(&mut self, _id: InputId, item: Pass2Driver) -> Result<()> {
+        for ep in item.entrypoints {
+            writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", ep)?;
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub struct Pass2Driver {
     assets: AssetSpecification,
-    pub entrypoints: Vec<String>,
+    entrypoints: Vec<String>,
 }
 
 impl Pass2Driver {
@@ -161,7 +208,7 @@ impl SecondPassImplArgs {
         for line in metadata.lines() {
             let line = stry!(line.context("error reading line of `pedia.txt` output"));
 
-            if let Some(rest) = line.strip_prefix("\\pediaEntrypoint{") {
+            if let Some(rest) = line.strip_prefix("\\entrypoint{") {
                 if let Some(path) = rest.split('}').next() {
                     println!("pedia:entrypoint {}", path);
                 }

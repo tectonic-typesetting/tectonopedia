@@ -15,14 +15,49 @@ use tectonic::{
     unstable_opts::UnstableOptions,
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
+use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_warning, StatusBackend};
+use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
     gtry, ogtry, ostry, stry,
-    texworker::{WorkerDriver, WorkerError, WorkerResultExt},
+    texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
+    InputId,
 };
+
+#[derive(Debug, Default)]
+pub struct Pass1Reducer {
+    assets: AssetSpecification,
+}
+
+impl TexReducer for Pass1Reducer {
+    type Worker = Pass1Driver;
+
+    fn make_worker(&mut self) -> Self::Worker {
+        Default::default()
+    }
+
+    fn process_item(
+        &mut self,
+        _id: InputId,
+        item: String,
+        status: &mut dyn StatusBackend,
+    ) -> Result<(), WorkerError<()>> {
+        if let Err(e) = self.assets.add_from_saved(item.as_bytes()) {
+            tt_error!(status, "failed to transfer assets JSON"; e);
+            return Err(WorkerError::Specific(()));
+        }
+
+        Ok(())
+    }
+}
+
+impl Pass1Reducer {
+    pub fn into_assets(self) -> AssetSpecification {
+        self.assets
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct Pass1Driver {
