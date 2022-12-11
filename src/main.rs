@@ -3,12 +3,12 @@
 
 use clap::{Args, Parser, Subcommand};
 use std::{fs::File, time::Instant};
-use string_interner::StringInterner;
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
 mod config;
+mod index;
 mod inputs;
 mod pass1;
 mod pass2;
@@ -72,13 +72,23 @@ impl BuildArgs {
     fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         let t0 = Instant::now();
 
+        // Set up data structures
+
+        let mut indices = index::IndexCollection::default();
+        indices.declare_index("inputs").unwrap();
+        indices.declare_index("outputs").unwrap();
+
+        atry!(
+            indices.load_user_indices();
+            ["failed to load user indices"]
+        );
+
         // First pass of indexing and gathering font/asset information.
 
-        let mut interner = StringInterner::default();
-        let mut p1r = pass1::Pass1Reducer::default();
-        let ninputs = texworker::reduce_inputs(&mut p1r, &mut interner, status)?;
+        let mut p1r = pass1::Pass1Reducer::new(indices);
+        let ninputs = texworker::reduce_inputs(&mut p1r, status)?;
         tt_note!(status, "pass 1: complete - processed {} inputs", ninputs);
-        let assets = p1r.into_assets();
+        let (assets, indices) = p1r.unpack();
 
         // Indexing goes here!
 
@@ -87,8 +97,8 @@ impl BuildArgs {
             ["error creating output `build/_all.html`"]
         );
 
-        let mut p2r = pass2::Pass2Reducer::new(assets, entrypoints_file);
-        texworker::reduce_inputs(&mut p2r, &mut interner, status)?;
+        let mut p2r = pass2::Pass2Reducer::new(assets, indices, entrypoints_file);
+        texworker::reduce_inputs(&mut p2r, status)?;
         tt_note!(status, "pass 2: complete");
 
         tt_note!(

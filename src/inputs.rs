@@ -10,6 +10,7 @@ pub struct InputIterator {
 
 impl InputIterator {
     pub fn new() -> Self {
+        // Hardcoding that we're running from the root directory!
         let inner = Box::new(WalkDir::new("txt").into_iter().filter_entry(is_tex_or_dir));
         InputIterator { inner }
     }
@@ -40,6 +41,6 @@ fn is_tex_or_dir(entry: &DirEntry) -> bool {
         || entry
             .file_name()
             .to_str()
-            .map(|s| s.ends_with(".tex"))
+            .map(|s| s.ends_with(".tex") && !s.starts_with('_'))
             .unwrap_or(false)
 }

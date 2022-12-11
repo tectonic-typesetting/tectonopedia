@@ -60,7 +60,7 @@ Dhref #1}#2\special{tdux:me a}%
 \newcommand{\entry}[2]{%
   #1
   \tduxSetupOutput{template.html}{e/#2/index.html}
-  \write\pediaIndex{\string\entrypoint{e/#2/index.html}}
-  \write\pediaIndex{\string\item{entries}{#2}{}}
+  \write\pediaIndex{\string\output{e/#2/index.html}}
+  \write\pediaIndex{\string\idef{entries}{#2}{}}
 }
 \makeatother

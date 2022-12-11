@@ -14,7 +14,6 @@ use std::{
     process::{ChildStdin, Command, Stdio},
     sync::mpsc::{channel, TryRecvError},
 };
-use string_interner::StringInterner;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use threadpool::ThreadPool;
@@ -221,6 +220,8 @@ fn process_one_input<W: WorkerDriver>(
 pub trait TexReducer {
     type Worker: WorkerDriver + 'static;
 
+    fn assign_input_id(&mut self, input_name: String) -> InputId;
+
     fn make_worker(&mut self) -> Self::Worker;
 
     /// This function must print out any error if one is encountered. Due to the
@@ -230,15 +231,10 @@ pub trait TexReducer {
         &mut self,
         id: InputId,
         item: <Self::Worker as WorkerDriver>::Item,
-        status: &mut dyn StatusBackend,
     ) -> Result<(), WorkerError<()>>;
 }
 
-pub fn reduce_inputs<R: TexReducer>(
-    red: &mut R,
-    interner: &mut StringInterner,
-    status: &mut dyn StatusBackend,
-) -> Result<usize> {
+pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend) -> Result<usize> {
     let self_path = atry!(
         std::env::current_exe();
         ["cannot obtain the path to the current executable"]
@@ -260,7 +256,7 @@ pub fn reduce_inputs<R: TexReducer>(
         let tx = tx.clone();
         let sp = self_path.clone();
         let driver = red.make_worker();
-        let id = interner.get_or_intern(entry.path().display().to_string());
+        let id = red.assign_input_id(entry.path().display().to_string());
 
         pool.execute(move || {
             tx.send(process_one_input(driver, sp, entry, id, n_tasks))
@@ -272,7 +268,7 @@ pub fn reduce_inputs<R: TexReducer>(
 
         match rx.try_recv() {
             Ok(result) => {
-                match result.and_then(|t| red.process_item(t.0, t.1, status)) {
+                match result.and_then(|t| red.process_item(t.0, t.1)) {
                     Ok(_) => {}
 
                     Err(WorkerError::General(_)) => {
@@ -294,10 +290,7 @@ pub fn reduce_inputs<R: TexReducer>(
     drop(tx);
 
     for result in rx.iter() {
-        if result
-            .and_then(|t| red.process_item(t.0, t.1, status))
-            .is_err()
-        {
+        if result.and_then(|t| red.process_item(t.0, t.1)).is_err() {
             // At this point, we've already launched everything, so we can't
             // give up early anymore; and the child process or inner callback
             // should have displayed the error.

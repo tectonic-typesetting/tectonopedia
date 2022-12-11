@@ -22,30 +22,37 @@ use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
-    gtry, ogtry, ostry, stry,
+    gtry,
+    index::{IndexCollection, IndexId},
+    ogtry, ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
+    worker_status::WorkerStatusBackend,
     InputId,
 };
 
 #[derive(Debug)]
 pub struct Pass2Reducer {
     assets: AssetSpecification,
+    indices: IndexCollection,
+    inputs_index_id: IndexId,
     entrypoints_file: File,
 }
 
 impl TexReducer for Pass2Reducer {
     type Worker = Pass2Driver;
 
+    fn assign_input_id(&mut self, input_name: String) -> InputId {
+        self.indices.define_by_id(self.inputs_index_id, input_name)
+    }
+
     fn make_worker(&mut self) -> Self::Worker {
         Pass2Driver::new(self.assets.clone())
     }
 
-    fn process_item(
-        &mut self,
-        id: InputId,
-        item: Pass2Driver,
-        status: &mut dyn StatusBackend,
-    ) -> Result<(), WorkerError<()>> {
+    fn process_item(&mut self, id: InputId, item: Pass2Driver) -> Result<(), WorkerError<()>> {
+        let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
+        let mut status = WorkerStatusBackend::new(input_path);
+
         if let Err(e) = self.process_item_inner(id, item) {
             tt_error!(status, "failed to process pass 2 data"; e);
             return Err(WorkerError::Specific(()));
@@ -56,16 +63,28 @@ impl TexReducer for Pass2Reducer {
 }
 
 impl Pass2Reducer {
-    pub fn new(assets: AssetSpecification, entrypoints_file: File) -> Self {
+    pub fn new(
+        assets: AssetSpecification,
+        indices: IndexCollection,
+        entrypoints_file: File,
+    ) -> Self {
+        let inputs_index_id = indices.get_index("inputs").unwrap();
+
         Pass2Reducer {
             assets,
+            indices,
+            inputs_index_id,
             entrypoints_file,
         }
     }
 
     fn process_item_inner(&mut self, _id: InputId, item: Pass2Driver) -> Result<()> {
-        for ep in item.entrypoints {
-            writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", ep)?;
+        for line in item.metadata_lines {
+            if let Some(rest) = line.strip_prefix("\\output{") {
+                if let Some(path) = rest.split('}').next() {
+                    writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", path)?;
+                }
+            }
         }
 
         Ok(())
@@ -75,14 +94,14 @@ impl Pass2Reducer {
 #[derive(Debug)]
 pub struct Pass2Driver {
     assets: AssetSpecification,
-    entrypoints: Vec<String>,
+    metadata_lines: Vec<String>,
 }
 
 impl Pass2Driver {
     pub fn new(assets: AssetSpecification) -> Self {
         Pass2Driver {
             assets,
-            entrypoints: Default::default(),
+            metadata_lines: Default::default(),
         }
     }
 }
@@ -103,8 +122,8 @@ impl WorkerDriver for Pass2Driver {
     }
 
     fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
-        if let Some(path) = record.strip_prefix("entrypoint ") {
-            self.entrypoints.push(path.to_owned());
+        if let Some(rest) = record.strip_prefix("meta ") {
+            self.metadata_lines.push(rest.to_owned());
         } else {
             tt_warning!(status, "unrecognized pass2 stdout record: {}", record);
         }
@@ -196,23 +215,18 @@ impl SecondPassImplArgs {
         // Print more details in the error case here?
         ostry!(sess.run(status));
 
-        // Parse the pedia.txt metadata file
+        // Print out the `pedia.txt` metadata file
 
         let mut files = sess.into_file_data();
 
-        let metadata = stry!(files
+        let assets = stry!(files
             .remove("pedia.txt")
             .ok_or_else(|| anyhow!("no `pedia.txt` file output")));
-        let metadata = BufReader::new(Cursor::new(&metadata.data));
+        let assets = BufReader::new(Cursor::new(&assets.data));
 
-        for line in metadata.lines() {
+        for line in assets.lines() {
             let line = stry!(line.context("error reading line of `pedia.txt` output"));
-
-            if let Some(rest) = line.strip_prefix("\\entrypoint{") {
-                if let Some(path) = rest.split('}').next() {
-                    println!("pedia:entrypoint {}", path);
-                }
-            }
+            println!("pedia:meta {}", line);
         }
 
         Ok(())
