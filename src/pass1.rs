@@ -23,6 +23,7 @@ use walkdir::DirEntry;
 use crate::{
     gtry,
     index::{IndexCollection, IndexId},
+    metadata::Metadatum,
     ogtry, ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
     worker_status::WorkerStatusBackend,
@@ -92,26 +93,21 @@ impl Pass1Reducer {
         let outputs_id = self.indices.get_index("outputs").unwrap();
 
         for line in item.metadata_lines {
-            if let Some(rest) = line.strip_prefix("\\output{") {
-                if let Some(path) = rest.split('}').next() {
+            match Metadatum::parse(&line)? {
+                Metadatum::Output(path) => {
                     cur_output = Some(self.indices.define_by_id(outputs_id, path));
                 }
-            } else if let Some(rest) = line.strip_prefix("\\idef{") {
-                // TODO: fix lame parsing!!!
-                let mut pieces = rest.split("}{");
-                let idx_name = pieces.next().unwrap();
-                let entry = pieces.next().unwrap();
-                let tail = pieces.next().unwrap();
-                let _fragment = tail.split('}').next().unwrap();
 
-                // TODO: ignoring fragment!
+                Metadatum::IndexDef { index, entry, .. } => {
+                    // TODO: ignoring fragment!
 
-                if let Err(e) = self.indices.define(idx_name, entry) {
-                    tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, idx_name; e);
-                    continue;
+                    if let Err(e) = self.indices.define(index, entry) {
+                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
+                        continue;
+                    }
+
+                    eprintln!("defined: {} {}", index, entry);
                 }
-
-                eprintln!("defined: {} {}", idx_name, entry);
             }
         }
 

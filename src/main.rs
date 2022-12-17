@@ -10,6 +10,7 @@ use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 mod config;
 mod index;
 mod inputs;
+mod metadata;
 mod pass1;
 mod pass2;
 #[macro_use]

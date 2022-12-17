@@ -24,6 +24,7 @@ use walkdir::DirEntry;
 use crate::{
     gtry,
     index::{IndexCollection, IndexId},
+    metadata::Metadatum,
     ogtry, ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
     worker_status::WorkerStatusBackend,
@@ -80,10 +81,12 @@ impl Pass2Reducer {
 
     fn process_item_inner(&mut self, _id: InputId, item: Pass2Driver) -> Result<()> {
         for line in item.metadata_lines {
-            if let Some(rest) = line.strip_prefix("\\output{") {
-                if let Some(path) = rest.split('}').next() {
+            match Metadatum::parse(&line)? {
+                Metadatum::Output(path) => {
                     writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", path)?;
                 }
+
+                _ => {}
             }
         }
 
