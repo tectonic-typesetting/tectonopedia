@@ -7,6 +7,8 @@
 
 use tectonic_errors::prelude::*;
 
+use crate::holey_vec::HoleyVec;
+
 #[derive(Clone, Debug)]
 pub struct MultiVec<T> {
     /// All of the data that have been added to the multi-vec, in chunks in the
@@ -32,12 +34,8 @@ impl<T> MultiVec<T> {
     where
         I: IntoIterator<Item = T>,
     {
-        if self.outer_indices.len() > id {
-            if self.outer_indices[id] > 0 {
-                bail!("id {} has already been added to the multi-vec", id);
-            }
-        } else {
-            self.outer_indices.resize(id + 1, 0);
+        if self.outer_indices.ensure_holey_slot_available(id).is_err() {
+            bail!("id {} has already been added to the multi-vec", id);
         }
 
         let ii = self.inner_indices.len();
@@ -49,11 +47,7 @@ impl<T> MultiVec<T> {
     }
 
     pub fn lookup(&self, id: usize) -> Result<&[T]> {
-        if self.outer_indices.len() <= id {
-            bail!("id {} has not been added to the multi-vec yet", id);
-        }
-
-        let ii1 = self.outer_indices[id];
+        let ii1 = self.outer_indices.get_holey_slot(id);
 
         if ii1 == 0 {
             bail!("id {} has not been added to the multi-vec yet", id);

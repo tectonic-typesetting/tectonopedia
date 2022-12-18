@@ -4,8 +4,9 @@
 use std::{fs::File, io::Read};
 use string_interner::{StringInterner, Symbol};
 use tectonic_errors::prelude::*;
+use tectonic_status_base::{tt_error, StatusBackend};
 
-use crate::multivec::MultiVec;
+use crate::{holey_vec::HoleyVec, multivec::MultiVec, worker_status::WorkerStatusBackend};
 
 use string_interner::DefaultSymbol as EntryId;
 pub type IndexId = EntryId;
@@ -43,14 +44,12 @@ impl Index {
         let entry = self.reference(name);
         let eidx = entry.to_usize();
 
-        if self.defs.len() > eidx {
-            if let Some(prev_loc) = self.defs[eidx] {
-                if prev_loc != loc {
-                    return Err(prev_loc);
-                }
+        // The Err case will always be Some because no error is returned if the
+        // existing value is the default.
+        if let Err(Some(prev_loc)) = self.defs.ensure_holey_slot_available(eidx) {
+            if *prev_loc == loc {
+                return Err(*prev_loc);
             }
-        } else {
-            self.defs.resize(eidx + 1, None);
         }
 
         self.defs[eidx] = Some(loc);
@@ -69,6 +68,11 @@ impl Index {
     #[inline(always)]
     fn resolve(&self, entry: EntryId) -> &str {
         self.entries.resolve(entry).unwrap()
+    }
+
+    /// Return whether the specified entry has a definition location.
+    fn has_definition(&self, entry: EntryId) -> bool {
+        self.defs.holey_slot_is_filled(entry.to_usize())
     }
 
     fn iter(&self) -> impl IntoIterator<Item = (EntryId, &str)> {
@@ -208,22 +212,30 @@ impl IndexCollection {
 
     /// Validate all of the cross-references.
     pub fn validate_references(&self) -> Result<()> {
+        let mut n_failures = 0;
+
         for (input_id, input_name) in self.indices[INPUTS_INDEX_INDEX].iter() {
-            // We always define the refs for every input, so the lookup can
+            let mut status = WorkerStatusBackend::new(input_name);
+
+            // We always define the refs for every input, so this lookup can
             // never fail.
             let refs = self.refs.lookup(input_id.to_usize()).unwrap();
 
-            // TODO real
-
-            eprintln!("index references in input `{}`", input_name);
             for entry in refs {
-                let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
-                let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
-                eprintln!("  {}:{}", i, e);
+                if !self.indices[entry.index.to_usize()].has_definition(entry.entry) {
+                    let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
+                    let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
+                    tt_error!(status, "reference to index entry `{}:{}` that does not have an assocated definition location", i, e);
+                    n_failures += 1;
+                }
             }
         }
 
-        Ok(())
+        match n_failures {
+            0 => Ok(()),
+            1 => Err(anyhow!("1 unresolved index reference")),
+            n => Err(anyhow!("{} unresolved index references", n)),
+        }
     }
 
     pub fn load_user_indices(&mut self) -> Result<()> {

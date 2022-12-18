@@ -8,6 +8,7 @@ use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
 mod config;
+mod holey_vec;
 mod index;
 mod inputs;
 mod metadata;
