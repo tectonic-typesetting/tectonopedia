@@ -11,6 +11,7 @@ mod config;
 mod index;
 mod inputs;
 mod metadata;
+mod multivec;
 mod pass1;
 mod pass2;
 #[macro_use]
@@ -76,8 +77,6 @@ impl BuildArgs {
         // Set up data structures
 
         let mut indices = index::IndexCollection::default();
-        indices.declare_index("inputs").unwrap();
-        indices.declare_index("outputs").unwrap();
 
         atry!(
             indices.load_user_indices();
@@ -91,7 +90,14 @@ impl BuildArgs {
         tt_note!(status, "pass 1: complete - processed {} inputs", ninputs);
         let (assets, indices) = p1r.unpack();
 
-        // Indexing goes here!
+        // Resolve cross-references and validate.
+
+        atry!(
+            indices.validate_references();
+            ["failed to validate cross-references"]
+        );
+
+        // Pass 2, emitting
 
         let entrypoints_file = atry!(
             File::create("build/_all.html");

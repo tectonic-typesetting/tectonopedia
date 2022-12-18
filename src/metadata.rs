@@ -17,13 +17,25 @@ pub enum Metadatum<'a> {
         /// The name of the index for which this entry is being declared.
         index: &'a str,
 
-        /// The name of the entry being declared/
+        /// The name of the entry being declared.
         entry: &'a str,
 
         /// The URL fragment specifying the location within the current output
         /// document that is best associated with this entry's definition. May
         /// be empty. For HTML, should otherwise have the form `"#frag"`.
         fragment: &'a str,
+    },
+
+    /// Reference an index entry.
+    ///
+    /// For the second processing pass, the reference will be resolved and the
+    /// resolved value will be provided to the TeX code.
+    IndexRef {
+        /// The name of the index in which the entry is being referenced.
+        index: &'a str,
+
+        /// The name of the entry being referenced.
+        entry: &'a str,
     },
 }
 
@@ -47,6 +59,14 @@ impl<'a> Metadatum<'a> {
                     index: terms[0],
                     entry: terms[1],
                     fragment: terms[2],
+                })
+            }
+
+            "iref" => {
+                ensure!(terms.len() == 2, "malformed metadata line {:?}: \\iref must be followed by exactly 2 braced terms", s);
+                Ok(Metadatum::IndexRef {
+                    index: terms[0],
+                    entry: terms[1],
                 })
             }
 

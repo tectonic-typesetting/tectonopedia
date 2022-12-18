@@ -22,7 +22,7 @@ use walkdir::DirEntry;
 
 use crate::{
     gtry,
-    index::{IndexCollection, IndexId},
+    index::{IndexCollection, IndexEntry, IndexId},
     metadata::Metadatum,
     ogtry, ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
@@ -41,7 +41,8 @@ impl TexReducer for Pass1Reducer {
     type Worker = Pass1Driver;
 
     fn assign_input_id(&mut self, input_name: String) -> InputId {
-        self.indices.define_by_id(self.inputs_index_id, input_name)
+        self.indices
+            .reference_by_id(self.inputs_index_id, input_name)
     }
 
     fn make_worker(&mut self) -> Self::Worker {
@@ -52,9 +53,18 @@ impl TexReducer for Pass1Reducer {
         let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
         let mut status = WorkerStatusBackend::new(input_path);
 
-        if let Err(e) = self.process_item_inner(id, item, &mut status) {
-            tt_error!(status, "failed to process pass 1 data"; e);
-            return Err(WorkerError::Specific(()));
+        match self.process_item_inner(id, item, &mut status) {
+            Ok(index_refs) => {
+                // This function only fails if the references for the given input have
+                // already been logged, which should never happen to us.
+                self.indices.log_references(id, index_refs).unwrap();
+            }
+
+            Err(e) => {
+                self.indices.log_references(id, vec![]).unwrap();
+                tt_error!(status, "failed to process pass 1 data"; e);
+                return Err(WorkerError::Specific(()));
+            }
         }
 
         Ok(())
@@ -81,7 +91,7 @@ impl Pass1Reducer {
         _id: InputId,
         item: Pass1Driver,
         status: &mut dyn StatusBackend,
-    ) -> Result<()> {
+    ) -> Result<Vec<IndexEntry>> {
         atry!(
             self.assets.add_from_saved(item.assets.as_bytes());
             ["failed to import assets data"]
@@ -89,29 +99,59 @@ impl Pass1Reducer {
 
         // Process the metadata
 
-        let mut cur_output = None;
         let outputs_id = self.indices.get_index("outputs").unwrap();
+        let mut cur_output = None;
+        let mut index_refs = Vec::new();
 
         for line in item.metadata_lines {
             match Metadatum::parse(&line)? {
                 Metadatum::Output(path) => {
-                    cur_output = Some(self.indices.define_by_id(outputs_id, path));
+                    // TODO: make sure there are no redundant outputs
+                    cur_output = Some(self.indices.reference_by_id(outputs_id, path));
                 }
 
-                Metadatum::IndexDef { index, entry, .. } => {
-                    // TODO: ignoring fragment!
-
-                    if let Err(e) = self.indices.define(index, entry) {
+                Metadatum::IndexDef {
+                    index,
+                    entry,
+                    fragment,
+                } => {
+                    if let Err(e) = self.indices.reference(index, entry) {
                         tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
                         continue;
                     }
 
-                    eprintln!("defined: {} {}", index, entry);
+                    let co = match cur_output.as_ref() {
+                        Some(o) => *o,
+                        None => {
+                            tt_warning!(status, "attempt to define entry `{}` in index `{}` before an output has been specified", entry, index);
+                            continue;
+                        }
+                    };
+
+                    let loc = self.indices.make_location_by_id(co, fragment);
+
+                    if let Err(e) = self.indices.define(index, entry, loc) {
+                        // The error here will contain the contextual information.
+                        tt_warning!(status, "couldn't define an index entry"; e);
+                    }
+                }
+
+                Metadatum::IndexRef { index, entry } => {
+                    let ie = match self.indices.reference_to_entry(index, entry) {
+                        Ok(ie) => ie,
+
+                        Err(e) => {
+                            tt_warning!(status, "couldn't reference entry `{}` in index `{}`", entry, index; e);
+                            continue;
+                        }
+                    };
+
+                    index_refs.push(ie);
                 }
             }
         }
 
-        Ok(())
+        Ok(index_refs)
     }
 }
 

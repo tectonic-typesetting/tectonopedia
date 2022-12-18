@@ -2,26 +2,59 @@
 // Licensed under the MIT License
 
 use std::{fs::File, io::Read};
-use string_interner::StringInterner;
+use string_interner::{StringInterner, Symbol};
 use tectonic_errors::prelude::*;
 
-use string_interner::{DefaultSymbol as EntryId, Symbol};
+use crate::multivec::MultiVec;
+
+use string_interner::DefaultSymbol as EntryId;
 pub type IndexId = EntryId;
 
 #[derive(Debug)]
 struct Index {
     entries: StringInterner,
+    defs: Vec<Option<OutputLocation>>,
 }
 
 impl Index {
     fn new(_id: IndexId) -> Self {
         Index {
             entries: Default::default(),
+            defs: Default::default(),
         }
     }
 
-    fn define(&mut self, name: impl AsRef<str>) -> EntryId {
+    /// Ensure that the specified name exists in the index.
+    fn reference(&mut self, name: impl AsRef<str>) -> EntryId {
         self.entries.get_or_intern(name)
+    }
+
+    /// Ensure that the name exists in the index, and declare its point of
+    /// definition as an IndexEntry.
+    ///
+    /// The operation can fail if the name has already had its location defined,
+    /// and this definition is for a different location. In that case, the error
+    /// value is the location of the previous definition.
+    fn define(
+        &mut self,
+        name: impl AsRef<str>,
+        loc: OutputLocation,
+    ) -> Result<EntryId, OutputLocation> {
+        let entry = self.reference(name);
+        let eidx = entry.to_usize();
+
+        if self.defs.len() > eidx {
+            if let Some(prev_loc) = self.defs[eidx] {
+                if prev_loc != loc {
+                    return Err(prev_loc);
+                }
+            }
+        } else {
+            self.defs.resize(eidx + 1, None);
+        }
+
+        self.defs[eidx] = Some(loc);
+        Ok(entry)
     }
 
     #[inline(always)]
@@ -37,20 +70,43 @@ impl Index {
     fn resolve(&self, entry: EntryId) -> &str {
         self.entries.resolve(entry).unwrap()
     }
+
+    fn iter(&self) -> impl IntoIterator<Item = (EntryId, &str)> {
+        self.entries.into_iter()
+    }
 }
 
 #[derive(Debug)]
 pub struct IndexCollection {
     indices: Vec<Index>,
+
+    /// Information about the index references contained in each input (which
+    /// may spread over multiple outputs). We group by input because we need to
+    /// feed the resolved references into each input for its second-pass
+    /// processing. The multi-vec's "keys" are the to_usize() of the input
+    /// EntryIds.
+    refs: MultiVec<IndexEntry>,
 }
 
 pub const INDEX_OF_INDICES_NAME: &'static str = "ioi";
 const INDEX_OF_INDICES_INDEX: usize = 0;
 
+pub const INPUTS_INDEX_NAME: &'static str = "inputs";
+const INPUTS_INDEX_INDEX: usize = 1;
+
+pub const OUTPUTS_INDEX_NAME: &'static str = "outputs";
+const OUTPUTS_INDEX_INDEX: usize = 2;
+
+pub const FRAGMENTS_INDEX_NAME: &'static str = "fragments";
+const FRAGMENTS_INDEX_INDEX: usize = 3;
+
 impl IndexCollection {
+    /// Define a new index by name.
+    ///
+    /// Indices cannot be redundantly declared.
     pub fn declare_index(&mut self, name: impl AsRef<str>) -> Result<IndexId> {
         let name = name.as_ref();
-        let id: IndexId = self.indices[INDEX_OF_INDICES_INDEX].define(name);
+        let id: IndexId = self.indices[INDEX_OF_INDICES_INDEX].reference(name);
         let idx = id.to_usize();
 
         if idx != self.indices.len() {
@@ -61,6 +117,8 @@ impl IndexCollection {
         Ok(id)
     }
 
+    /// Convert an index name into its IndexId. The conversion can fail if the
+    /// index in question was never declared.
     pub fn get_index(&self, name: impl AsRef<str>) -> Result<IndexId> {
         let name = name.as_ref();
         Ok(a_ok_or!(
@@ -69,21 +127,103 @@ impl IndexCollection {
         ))
     }
 
-    pub fn define_by_id(&mut self, index: IndexId, entry: impl AsRef<str>) -> EntryId {
-        self.indices[index.to_usize()].define(entry)
+    /// Create an OutputLocation.
+    pub fn make_location_by_id(
+        &mut self,
+        output_id: IndexId,
+        fragment: impl AsRef<str>,
+    ) -> OutputLocation {
+        OutputLocation::new(
+            output_id,
+            self.indices[FRAGMENTS_INDEX_INDEX].reference(fragment),
+        )
+    }
+
+    pub fn reference_by_id(&mut self, index: IndexId, entry: impl AsRef<str>) -> EntryId {
+        self.indices[index.to_usize()].reference(entry)
+    }
+
+    pub fn reference(&mut self, index: impl AsRef<str>, entry: impl AsRef<str>) -> Result<EntryId> {
+        let id = self.get_index(index)?;
+        Ok(self.indices[id.to_usize()].reference(entry))
+    }
+
+    pub fn reference_to_entry(
+        &mut self,
+        index: impl AsRef<str>,
+        entry: impl AsRef<str>,
+    ) -> Result<IndexEntry> {
+        let index = self.get_index(index)?;
+        let entry = self.indices[index.to_usize()].reference(entry);
+        Ok(IndexEntry { index, entry })
+    }
+
+    pub fn define_by_id(
+        &mut self,
+        index: IndexId,
+        entry: impl AsRef<str>,
+        loc: OutputLocation,
+    ) -> Result<EntryId> {
+        let entry = entry.as_ref();
+
+        self.indices[index.to_usize()].define(entry, loc).map_err(|prev_loc|
+            anyhow!(
+                "redefinition of entry `{}` in index `{}`; previous location was `{}{}`, new location is `{}{}`",
+                entry,
+                self.indices[INDEX_OF_INDICES_INDEX].resolve(index),
+                self.indices[OUTPUTS_INDEX_INDEX].resolve(prev_loc.output),
+                self.indices[FRAGMENTS_INDEX_INDEX].resolve(prev_loc.fragment),
+                self.indices[OUTPUTS_INDEX_INDEX].resolve(loc.output),
+                self.indices[FRAGMENTS_INDEX_INDEX].resolve(loc.fragment),
+            )
+        )
     }
 
     pub fn define(
         &mut self,
-        index_name: impl AsRef<str>,
+        index: impl AsRef<str>,
         entry: impl AsRef<str>,
+        loc: OutputLocation,
     ) -> Result<EntryId> {
-        let id = self.get_index(index_name)?;
-        Ok(self.indices[id.to_usize()].define(entry))
+        let id = self.get_index(index)?;
+        self.define_by_id(id, entry, loc)
     }
 
     pub fn resolve_by_id(&self, index: IndexId, entry: EntryId) -> &str {
         self.indices[index.to_usize()].resolve(entry)
+    }
+
+    /// Capture the set of index entries referenced by a particular input.
+    ///
+    /// The input is identified by its entry in the inputs index. Calling this
+    /// function more than once for the same input ID is illegal, and will
+    /// result in an error being returned.
+    pub fn log_references(
+        &mut self,
+        input: EntryId,
+        refs: impl IntoIterator<Item = IndexEntry>,
+    ) -> Result<()> {
+        self.refs.add_extend(input.to_usize(), refs)
+    }
+
+    /// Validate all of the cross-references.
+    pub fn validate_references(&self) -> Result<()> {
+        for (input_id, input_name) in self.indices[INPUTS_INDEX_INDEX].iter() {
+            // We always define the refs for every input, so the lookup can
+            // never fail.
+            let refs = self.refs.lookup(input_id.to_usize()).unwrap();
+
+            // TODO real
+
+            eprintln!("index references in input `{}`", input_name);
+            for entry in refs {
+                let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
+                let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
+                eprintln!("  {}:{}", i, e);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn load_user_indices(&mut self) -> Result<()> {
@@ -145,11 +285,61 @@ impl Default for IndexCollection {
             indices: vec![Index::new(
                 IndexId::try_from_usize(INDEX_OF_INDICES_INDEX).unwrap(),
             )],
+            refs: Default::default(),
         };
 
-        let id = inst.indices[INDEX_OF_INDICES_INDEX].define(INDEX_OF_INDICES_NAME);
-        assert!(id.to_usize() == INDEX_OF_INDICES_INDEX);
+        let id = inst.indices[INDEX_OF_INDICES_INDEX].reference(INDEX_OF_INDICES_NAME);
+        assert_eq!(id.to_usize(), INDEX_OF_INDICES_INDEX);
+
+        let id = inst.declare_index(INPUTS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), INPUTS_INDEX_INDEX);
+
+        let id = inst.declare_index(OUTPUTS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), OUTPUTS_INDEX_INDEX);
+
+        let id = inst.declare_index(FRAGMENTS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), FRAGMENTS_INDEX_INDEX);
+
         inst
+    }
+}
+
+/// An entry in an index.
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub struct IndexEntry {
+    pub index: IndexId,
+    pub entry: EntryId,
+}
+
+/// A location in the output, specified by an ouput path name and a URL fragment
+/// within that output.
+///
+/// This type has essentially the same structure as IndexEntry, but the
+/// semantics of the two fields are different.
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub struct OutputLocation {
+    pub output: EntryId,
+    pub fragment: EntryId,
+}
+
+impl OutputLocation {
+    pub fn new(output: IndexId, fragment: EntryId) -> Self {
+        OutputLocation { output, fragment }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn index_entry_option_size() {
+        assert_eq!(std::mem::size_of::<Option<IndexEntry>>(), 8);
+    }
+
+    #[test]
+    fn output_location_option_size() {
+        assert_eq!(std::mem::size_of::<Option<OutputLocation>>(), 8);
     }
 }
 

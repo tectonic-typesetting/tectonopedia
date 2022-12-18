@@ -43,10 +43,12 @@ impl TexReducer for Pass2Reducer {
     type Worker = Pass2Driver;
 
     fn assign_input_id(&mut self, input_name: String) -> InputId {
-        self.indices.define_by_id(self.inputs_index_id, input_name)
+        self.indices
+            .reference_by_id(self.inputs_index_id, input_name)
     }
 
     fn make_worker(&mut self) -> Self::Worker {
+        // TODO: get index resolution contents here, I think.
         Pass2Driver::new(self.assets.clone())
     }
 

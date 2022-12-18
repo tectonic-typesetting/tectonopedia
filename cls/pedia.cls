@@ -56,11 +56,16 @@ Dhref #1}#2\special{tdux:me a}%
 %
 % \entry{TITLE}{OUTFILE}
 %  Define an entry
-\makeatletter
 \newcommand{\entry}[2]{%
   #1
   \tduxSetupOutput{template.html}{e/#2/index.html}
   \write\pediaIndex{\string\output{e/#2/index.html}}
   \write\pediaIndex{\string\idef{entries}{#2}{}}
 }
-\makeatother
+%
+% \pediaLogRef{INDEX}{ENTRY}
+%  Log a reference to an index entry in the metadata file.
+%  This low-level command does not actally expand to any content!
+\newcommand{\pediaLogRef}[2]{%
+  \write\pediaIndex{\string\iref{#1}{#2}}
+}
