@@ -54,14 +54,15 @@ Dtarget _blank^^J%
 Dhref #1}#2\special{tdux:me a}%
 }
 %
-% \entry{TITLE}{OUTFILE}
+% \entry{TITLE}{PLAIN-TITLE}{OUTFILE}
 %  Define an entry
-\newcommand{\entry}[2]{%
+\newcommand{\entry}[3]{%
   #1
-  \tduxSetupOutput{template.html}{e/#2/index.html}
-  \write\pediaIndex{\string\output{e/#2/index.html}}
-  \write\pediaIndex{\string\idef{entries}{#2}{}}
-}
+  \tduxSetupOutput{template.html}{e/#3/index.html}
+  \write\pediaIndex{\string\output{e/#3/index.html}}
+  \write\pediaIndex{\string\idef{entries}{#3}{}}
+  \write\pediaIndex{\string\itext{entries}{#3}{#1}{#2}}
+  }
 %
 % \pediaLogRef{INDEX}{ENTRY}
 %  Log a reference to an index entry in the metadata file.

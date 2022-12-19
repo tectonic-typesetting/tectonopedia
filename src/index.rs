@@ -11,32 +11,26 @@ use crate::{holey_vec::HoleyVec, multivec::MultiVec, worker_status::WorkerStatus
 use string_interner::DefaultSymbol as EntryId;
 pub type IndexId = EntryId;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Index {
     entries: StringInterner,
     defs: Vec<Option<OutputLocation>>,
+    texts: Vec<Option<EntryText>>,
 }
 
 impl Index {
-    fn new(_id: IndexId) -> Self {
-        Index {
-            entries: Default::default(),
-            defs: Default::default(),
-        }
-    }
-
     /// Ensure that the specified name exists in the index.
     fn reference(&mut self, name: impl AsRef<str>) -> EntryId {
         self.entries.get_or_intern(name)
     }
 
-    /// Ensure that the name exists in the index, and declare its point of
-    /// definition as an IndexEntry.
+    /// Ensure that the name exists in the index, and declare the location of
+    /// its definition with an IndexEntry.
     ///
     /// The operation can fail if the name has already had its location defined,
     /// and this definition is for a different location. In that case, the error
     /// value is the location of the previous definition.
-    fn define(
+    fn define_loc(
         &mut self,
         name: impl AsRef<str>,
         loc: OutputLocation,
@@ -53,6 +47,33 @@ impl Index {
         }
 
         self.defs[eidx] = Some(loc);
+        Ok(entry)
+    }
+
+    /// Ensure that the name exists in the index and associate a textual
+    /// representation with it.
+    ///
+    /// The operation can fail if the name has already had its text defined
+    /// and this definition is different than the existing one. In that case,
+    /// the error value is the pair of the previous text and the new text
+    /// (since this function takes ownership of the argument).
+    fn define_text(
+        &mut self,
+        name: impl AsRef<str>,
+        text: EntryText,
+    ) -> Result<EntryId, (EntryText, EntryText)> {
+        let entry = self.reference(name);
+        let eidx = entry.to_usize();
+
+        // The Err case will always be Some because no error is returned if the
+        // existing value is the default.
+        if let Err(Some(prev_text)) = self.texts.ensure_holey_slot_available(eidx) {
+            if *prev_text == text {
+                return Err((prev_text.clone(), text));
+            }
+        }
+
+        self.texts[eidx] = Some(text);
         Ok(entry)
     }
 
@@ -117,7 +138,7 @@ impl IndexCollection {
             bail!("re-declaration of index `{}`", name);
         }
 
-        self.indices.push(Index::new(id));
+        self.indices.push(Index::default());
         Ok(id)
     }
 
@@ -162,7 +183,7 @@ impl IndexCollection {
         Ok(IndexEntry { index, entry })
     }
 
-    pub fn define_by_id(
+    pub fn define_loc_by_id(
         &mut self,
         index: IndexId,
         entry: impl AsRef<str>,
@@ -170,9 +191,9 @@ impl IndexCollection {
     ) -> Result<EntryId> {
         let entry = entry.as_ref();
 
-        self.indices[index.to_usize()].define(entry, loc).map_err(|prev_loc|
+        self.indices[index.to_usize()].define_loc(entry, loc).map_err(|prev_loc|
             anyhow!(
-                "redefinition of entry `{}` in index `{}`; previous location was `{}{}`, new location is `{}{}`",
+                "redefinition of entry location `{}` in index `{}`; previous was `{}{}`, new is `{}{}`",
                 entry,
                 self.indices[INDEX_OF_INDICES_INDEX].resolve(index),
                 self.indices[OUTPUTS_INDEX_INDEX].resolve(prev_loc.output),
@@ -183,14 +204,42 @@ impl IndexCollection {
         )
     }
 
-    pub fn define(
+    pub fn define_loc(
         &mut self,
         index: impl AsRef<str>,
         entry: impl AsRef<str>,
         loc: OutputLocation,
     ) -> Result<EntryId> {
         let id = self.get_index(index)?;
-        self.define_by_id(id, entry, loc)
+        self.define_loc_by_id(id, entry, loc)
+    }
+
+    pub fn define_text(
+        &mut self,
+        index: impl AsRef<str>,
+        entry: impl AsRef<str>,
+        text: EntryText,
+    ) -> Result<EntryId> {
+        let index = self.get_index(index)?;
+        let entry = entry.as_ref();
+
+        self.indices[index.to_usize()]
+            .define_text(entry, text)
+            .map_err(|(prev_text, text)| {
+                let (prev_ex, new_ex) = if prev_text.tex != text.tex {
+                    (&prev_text.tex, &text.tex)
+                } else {
+                    (&prev_text.plain, &text.plain)
+                };
+
+                anyhow!(
+                    "redefinition of entry text `{}` in index `{}`; previous was `{}`, new is `{}`",
+                    entry,
+                    self.indices[INDEX_OF_INDICES_INDEX].resolve(index),
+                    prev_ex,
+                    new_ex
+                )
+            })
     }
 
     pub fn resolve_by_id(&self, index: IndexId, entry: EntryId) -> &str {
@@ -294,9 +343,7 @@ impl IndexCollection {
 impl Default for IndexCollection {
     fn default() -> Self {
         let mut inst = IndexCollection {
-            indices: vec![Index::new(
-                IndexId::try_from_usize(INDEX_OF_INDICES_INDEX).unwrap(),
-            )],
+            indices: vec![Index::default()],
             refs: Default::default(),
         };
 
@@ -338,6 +385,17 @@ impl OutputLocation {
     pub fn new(output: IndexId, fragment: EntryId) -> Self {
         OutputLocation { output, fragment }
     }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct EntryText {
+    /// Some text in TeX markup, suitable for direct insertion into TeX source
+    /// code. E.g., `"\\TeX \\& \\LaTeX"`.
+    pub tex: String,
+
+    /// The "plain" equivalent of the text, without any control sequences or
+    /// escaping. E.g., `"TeX & LaTeX"`.
+    pub plain: String,
 }
 
 #[cfg(test)]

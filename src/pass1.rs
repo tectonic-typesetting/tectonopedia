@@ -22,7 +22,7 @@ use walkdir::DirEntry;
 
 use crate::{
     gtry,
-    index::{IndexCollection, IndexEntry, IndexId},
+    index::{EntryText, IndexCollection, IndexEntry, IndexId},
     metadata::Metadatum,
     ogtry, ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
@@ -130,7 +130,7 @@ impl Pass1Reducer {
 
                     let loc = self.indices.make_location_by_id(co, fragment);
 
-                    if let Err(e) = self.indices.define(index, entry, loc) {
+                    if let Err(e) = self.indices.define_loc(index, entry, loc) {
                         // The error here will contain the contextual information.
                         tt_warning!(status, "couldn't define an index entry"; e);
                     }
@@ -147,6 +147,28 @@ impl Pass1Reducer {
                     };
 
                     index_refs.push(ie);
+                }
+
+                Metadatum::IndexText {
+                    index,
+                    entry,
+                    tex,
+                    plain,
+                } => {
+                    if let Err(e) = self.indices.reference(index, entry) {
+                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
+                        continue;
+                    }
+
+                    let text = EntryText {
+                        tex: tex.to_owned(),
+                        plain: plain.to_owned(),
+                    };
+
+                    if let Err(e) = self.indices.define_text(index, entry, text) {
+                        // The error here will contain the contextual information.
+                        tt_warning!(status, "couldn't define the text of an index entry"; e);
+                    }
                 }
             }
         }

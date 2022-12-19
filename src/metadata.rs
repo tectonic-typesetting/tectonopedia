@@ -12,7 +12,7 @@ pub enum Metadatum<'a> {
     /// the relative path of the output HTML file. without escaping.
     Output(&'a str),
 
-    /// Define an index entry.
+    /// Define the location of an index entry.
     IndexDef {
         /// The name of the index for which this entry is being declared.
         index: &'a str,
@@ -36,6 +36,21 @@ pub enum Metadatum<'a> {
 
         /// The name of the entry being referenced.
         entry: &'a str,
+    },
+
+    /// Define the primary textual representation associated with an index entry.
+    IndexText {
+        /// The name of the index for which this entry is being declared.
+        index: &'a str,
+
+        /// The name of the entry being declared.
+        entry: &'a str,
+
+        /// The full TeX representation of the entry.
+        tex: &'a str,
+
+        /// The plain-text representation of the entry.
+        plain: &'a str,
     },
 }
 
@@ -67,6 +82,16 @@ impl<'a> Metadatum<'a> {
                 Ok(Metadatum::IndexRef {
                     index: terms[0],
                     entry: terms[1],
+                })
+            }
+
+            "itext" => {
+                ensure!(terms.len() == 4, "malformed metadata line {:?}: \\itext must be followed by exactly 4 braced terms", s);
+                Ok(Metadatum::IndexText {
+                    index: terms[0],
+                    entry: terms[1],
+                    tex: terms[2],
+                    plain: terms[3],
                 })
             }
 
