@@ -5,6 +5,8 @@
 
 use tectonic_errors::prelude::*;
 
+use crate::index::{IndexRefFlag, IndexRefFlags};
+
 /// A metadata entry from the `pedia.txt` file.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Metadatum<'a> {
@@ -36,6 +38,9 @@ pub enum Metadatum<'a> {
 
         /// The name of the entry being referenced.
         entry: &'a str,
+
+        /// The kinds of resources required by this reference.
+        flags: IndexRefFlags,
     },
 
     /// Define the primary textual representation associated with an index entry.
@@ -78,10 +83,25 @@ impl<'a> Metadatum<'a> {
             }
 
             "iref" => {
-                ensure!(terms.len() == 2, "malformed metadata line {:?}: \\iref must be followed by exactly 2 braced terms", s);
+                ensure!(terms.len() == 3, "malformed metadata line {:?}: \\iref must be followed by exactly 3 braced terms", s);
+
+                let index = terms[0];
+                let entry = terms[1];
+                let flags_term = terms[2];
+                let mut flags = 0;
+
+                if flags_term.contains('l') {
+                    flags |= IndexRefFlag::NeedsLoc as u8;
+                }
+
+                if flags_term.contains('t') {
+                    flags |= IndexRefFlag::NeedsText as u8;
+                }
+
                 Ok(Metadatum::IndexRef {
-                    index: terms[0],
-                    entry: terms[1],
+                    index,
+                    entry,
+                    flags,
                 })
             }
 

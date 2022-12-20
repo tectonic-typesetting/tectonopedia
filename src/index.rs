@@ -14,7 +14,7 @@ pub type IndexId = EntryId;
 #[derive(Debug, Default)]
 struct Index {
     entries: StringInterner,
-    defs: Vec<Option<OutputLocation>>,
+    locs: Vec<Option<OutputLocation>>,
     texts: Vec<Option<EntryText>>,
 }
 
@@ -25,7 +25,7 @@ impl Index {
     }
 
     /// Ensure that the name exists in the index, and declare the location of
-    /// its definition with an IndexEntry.
+    /// its definition.
     ///
     /// The operation can fail if the name has already had its location defined,
     /// and this definition is for a different location. In that case, the error
@@ -40,13 +40,13 @@ impl Index {
 
         // The Err case will always be Some because no error is returned if the
         // existing value is the default.
-        if let Err(Some(prev_loc)) = self.defs.ensure_holey_slot_available(eidx) {
+        if let Err(Some(prev_loc)) = self.locs.ensure_holey_slot_available(eidx) {
             if *prev_loc == loc {
                 return Err(*prev_loc);
             }
         }
 
-        self.defs[eidx] = Some(loc);
+        self.locs[eidx] = Some(loc);
         Ok(entry)
     }
 
@@ -92,8 +92,13 @@ impl Index {
     }
 
     /// Return whether the specified entry has a definition location.
-    fn has_definition(&self, entry: EntryId) -> bool {
-        self.defs.holey_slot_is_filled(entry.to_usize())
+    fn has_location(&self, entry: EntryId) -> bool {
+        self.locs.holey_slot_is_filled(entry.to_usize())
+    }
+
+    /// Return whether the specified entry has a defined textualization.
+    fn has_text(&self, entry: EntryId) -> bool {
+        self.texts.holey_slot_is_filled(entry.to_usize())
     }
 
     fn iter(&self) -> impl IntoIterator<Item = (EntryId, &str)> {
@@ -110,7 +115,7 @@ pub struct IndexCollection {
     /// feed the resolved references into each input for its second-pass
     /// processing. The multi-vec's "keys" are the to_usize() of the input
     /// EntryIds.
-    refs: MultiVec<IndexEntry>,
+    refs: MultiVec<IndexRef>,
 }
 
 pub const INDEX_OF_INDICES_NAME: &'static str = "ioi";
@@ -177,10 +182,10 @@ impl IndexCollection {
         &mut self,
         index: impl AsRef<str>,
         entry: impl AsRef<str>,
-    ) -> Result<IndexEntry> {
+    ) -> Result<(IndexId, EntryId)> {
         let index = self.get_index(index)?;
         let entry = self.indices[index.to_usize()].reference(entry);
-        Ok(IndexEntry { index, entry })
+        Ok((index, entry))
     }
 
     pub fn define_loc_by_id(
@@ -254,13 +259,18 @@ impl IndexCollection {
     pub fn log_references(
         &mut self,
         input: EntryId,
-        refs: impl IntoIterator<Item = IndexEntry>,
+        refs: impl IntoIterator<Item = IndexRef>,
     ) -> Result<()> {
         self.refs.add_extend(input.to_usize(), refs)
     }
 
     /// Validate all of the cross-references.
     pub fn validate_references(&self) -> Result<()> {
+        // Multiple inputs might reference the same entry, of course. We need to
+        // keep track of references for each input, though, to know which
+        // resolutions to provide in pass 2, and checking these resolutions
+        // should be very quick, so we don't bother trying to coalesce the
+        // checks.
         let mut n_failures = 0;
 
         for (input_id, input_name) in self.indices[INPUTS_INDEX_INDEX].iter() {
@@ -271,10 +281,28 @@ impl IndexCollection {
             let refs = self.refs.lookup(input_id.to_usize()).unwrap();
 
             for entry in refs {
-                if !self.indices[entry.index.to_usize()].has_definition(entry.entry) {
+                let f = entry.flags;
+
+                if (f & IndexRefFlag::NeedsLoc as u8) != 0
+                    && !self.indices[entry.index.to_usize()].has_location(entry.entry)
+                {
                     let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
                     let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
-                    tt_error!(status, "reference to index entry `{}:{}` that does not have an assocated definition location", i, e);
+                    tt_error!(status, "reference to location of index entry `{}:{}` that does not have one defined", i, e);
+                    n_failures += 1;
+                }
+
+                if (f & IndexRefFlag::NeedsText as u8) != 0
+                    && !self.indices[entry.index.to_usize()].has_text(entry.entry)
+                {
+                    let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
+                    let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
+                    tt_error!(
+                        status,
+                        "reference to text of index entry `{}:{}` that does not have it defined",
+                        i,
+                        e
+                    );
                     n_failures += 1;
                 }
             }
@@ -363,18 +391,16 @@ impl Default for IndexCollection {
     }
 }
 
-/// An entry in an index.
+/// An reference to an entry in an index.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
-pub struct IndexEntry {
+pub struct IndexRef {
     pub index: IndexId,
     pub entry: EntryId,
+    pub flags: IndexRefFlags,
 }
 
 /// A location in the output, specified by an ouput path name and a URL fragment
 /// within that output.
-///
-/// This type has essentially the same structure as IndexEntry, but the
-/// semantics of the two fields are different.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct OutputLocation {
     pub output: EntryId,
@@ -398,14 +424,17 @@ pub struct EntryText {
     pub plain: String,
 }
 
+pub type IndexRefFlags = u8;
+
+#[repr(u8)]
+pub enum IndexRefFlag {
+    NeedsLoc = 1 << 0,
+    NeedsText = 1 << 1,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn index_entry_option_size() {
-        assert_eq!(std::mem::size_of::<Option<IndexEntry>>(), 8);
-    }
 
     #[test]
     fn output_location_option_size() {

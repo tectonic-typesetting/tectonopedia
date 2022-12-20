@@ -64,9 +64,12 @@ Dhref #1}#2\special{tdux:me a}%
   \write\pediaIndex{\string\itext{entries}{#3}{#1}{#2}}
   }
 %
-% \pediaLogRef{INDEX}{ENTRY}
+% \pediaLogRef{INDEX}{ENTRY}{FLAGS}
 %  Log a reference to an index entry in the metadata file.
 %  This low-level command does not actally expand to any content!
-\newcommand{\pediaLogRef}[2]{%
-  \write\pediaIndex{\string\iref{#1}{#2}}
+%  An "l" in the flags indicates that the entry's definition location
+%  must be defined. A "t" in the flags indicates that the entry's
+%  text must be defined.
+\newcommand{\pediaLogRef}[3]{%
+  \write\pediaIndex{\string\iref{#1}{#2}{#3}}
 }

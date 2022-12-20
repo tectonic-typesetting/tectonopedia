@@ -5,6 +5,7 @@
 
 use clap::Args;
 use std::{
+    collections::HashMap,
     io::{BufRead, BufReader, Cursor},
     process::{ChildStdin, Command},
 };
@@ -22,7 +23,7 @@ use walkdir::DirEntry;
 
 use crate::{
     gtry,
-    index::{EntryText, IndexCollection, IndexEntry, IndexId},
+    index::{EntryText, IndexCollection, IndexId, IndexRef},
     metadata::Metadatum,
     ogtry, ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
@@ -91,17 +92,17 @@ impl Pass1Reducer {
         _id: InputId,
         item: Pass1Driver,
         status: &mut dyn StatusBackend,
-    ) -> Result<Vec<IndexEntry>> {
+    ) -> Result<impl IntoIterator<Item = IndexRef>> {
         atry!(
             self.assets.add_from_saved(item.assets.as_bytes());
             ["failed to import assets data"]
         );
 
-        // Process the metadata
+        // Process the metadata. We coalesce index references here.
 
         let outputs_id = self.indices.get_index("outputs").unwrap();
         let mut cur_output = None;
-        let mut index_refs = Vec::new();
+        let mut index_refs = HashMap::new();
 
         for line in item.metadata_lines {
             match Metadatum::parse(&line)? {
@@ -136,7 +137,11 @@ impl Pass1Reducer {
                     }
                 }
 
-                Metadatum::IndexRef { index, entry } => {
+                Metadatum::IndexRef {
+                    index,
+                    entry,
+                    flags,
+                } => {
                     let ie = match self.indices.reference_to_entry(index, entry) {
                         Ok(ie) => ie,
 
@@ -146,7 +151,8 @@ impl Pass1Reducer {
                         }
                     };
 
-                    index_refs.push(ie);
+                    let cur_flags = index_refs.entry(ie).or_default();
+                    *cur_flags |= flags;
                 }
 
                 Metadatum::IndexText {
@@ -173,7 +179,13 @@ impl Pass1Reducer {
             }
         }
 
-        Ok(index_refs)
+        Ok(index_refs
+            .into_iter()
+            .map(|((index, entry), flags)| IndexRef {
+                index,
+                entry,
+                flags,
+            }))
     }
 }
 
