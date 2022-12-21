@@ -48,9 +48,17 @@
 \def\TeX{\special{tdux:cs math}\justTeX\special{tdux:ce math}}
 %
 % \href{URL}{TEXT}
+%  This builds in a `target="_blank"` setting.
 \renewcommand{\href}[2]{%
-\special{tdux:mfs a^^J%
+  \special{tdux:mfs a^^J%
 Dtarget _blank^^J%
+Dhref #1}#2\special{tdux:me a}%
+}
+%
+% \hrefInternal{URL}{TEXT}
+%  Like \href, but without the "_blank" target.
+\newcommand{\hrefInternal}[2]{%
+  \special{tdux:mfs a^^J%
 Dhref #1}#2\special{tdux:me a}%
 }
 %
@@ -59,10 +67,13 @@ Dhref #1}#2\special{tdux:me a}%
 \newcommand{\entry}[3]{%
   #1
   \tduxSetupOutput{template.html}{e/#3/index.html}
+  \def\pediaRelTop{../../}
   \write\pediaIndex{\string\output{e/#3/index.html}}
   \write\pediaIndex{\string\idef{entries}{#3}{}}
+  % TODO: deploy some magic to express the title verbatim-ly
+  % in the metadata file.
   \write\pediaIndex{\string\itext{entries}{#3}{#1}{#2}}
-  }
+}
 %
 % \pediaLogRef{INDEX}{ENTRY}{FLAGS}
 %  Log a reference to an index entry in the metadata file.
@@ -72,4 +83,36 @@ Dhref #1}#2\special{tdux:me a}%
 %  text must be defined.
 \newcommand{\pediaLogRef}[3]{%
   \write\pediaIndex{\string\iref{#1}{#2}{#3}}
+}
+%
+% \pediaEnsureRefCS{INDEX}{ENTRY}{DATATYPE}
+%  Ensure that a pedia cross-referencing control string is defined to
+%  `?` if it is not already defined. This will kick in in the first pass,
+%  when the cross-referencing information is still being gathered. In
+%  the second pass, these control strings will be defined by the
+%  driver.
+\newcommand{\pediaEnsureRefCS}[3]{%
+  \unless\ifcsname pedia resolve**#1**#2**#3\endcsname
+    \expandafter\def\csname pedia resolve**#1**#2**#3\endcsname{?}
+  \fi
+}
+%
+% \pediaLinkRef{INDEX}{ENTRY}
+%  Create an internal <a> link to an index entry with a defined location
+%  and textual representation.
+\newcommand{\pediaLinkRef}[2]{%
+  \pediaLogRef{#1}{#2}{lt}
+  \pediaEnsureRefCS{#1}{#2}{loc}
+  \pediaEnsureRefCS{#1}{#2}{text plain}
+  \hrefInternal{%
+    \pediaRelTop\csname pedia resolve**#1**#2**loc\endcsname%
+   }{%
+    \csname pedia resolve**#1**#2**text plain\endcsname
+   }
+}
+%
+% \e{ENTRY}
+%  Create an internal <a> link to the specified encyclopedia entry.
+\newcommand{\e}[1]{%
+  \pediaLinkRef{entries}{#1}
 }

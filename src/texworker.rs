@@ -255,8 +255,8 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
 
         let tx = tx.clone();
         let sp = self_path.clone();
-        let driver = red.make_worker();
         let id = red.assign_input_id(entry.path().display().to_string());
+        let driver = red.make_worker();
 
         pool.execute(move || {
             tx.send(process_one_input(driver, sp, entry, id, n_tasks))

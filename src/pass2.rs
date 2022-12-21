@@ -5,6 +5,7 @@
 
 use clap::Args;
 use std::{
+    fmt::Write as FmtWrite,
     fs::File,
     io::{BufRead, BufReader, Cursor, Write},
     process::{ChildStdin, Command},
@@ -36,6 +37,7 @@ pub struct Pass2Reducer {
     assets: AssetSpecification,
     indices: IndexCollection,
     inputs_index_id: IndexId,
+    input_id: Option<InputId>,
     entrypoints_file: File,
 }
 
@@ -43,13 +45,18 @@ impl TexReducer for Pass2Reducer {
     type Worker = Pass2Driver;
 
     fn assign_input_id(&mut self, input_name: String) -> InputId {
-        self.indices
-            .reference_by_id(self.inputs_index_id, input_name)
+        let input_id = self
+            .indices
+            .reference_by_id(self.inputs_index_id, input_name);
+        self.input_id = Some(input_id);
+        input_id
     }
 
     fn make_worker(&mut self) -> Self::Worker {
-        // TODO: get index resolution contents here, I think.
-        Pass2Driver::new(self.assets.clone())
+        let rrtex = self
+            .indices
+            .get_resolved_reference_tex(self.input_id.unwrap());
+        Pass2Driver::new(rrtex, self.assets.clone())
     }
 
     fn process_item(&mut self, id: InputId, item: Pass2Driver) -> Result<(), WorkerError<()>> {
@@ -77,6 +84,7 @@ impl Pass2Reducer {
             assets,
             indices,
             inputs_index_id,
+            input_id: None,
             entrypoints_file,
         }
     }
@@ -98,13 +106,15 @@ impl Pass2Reducer {
 
 #[derive(Debug)]
 pub struct Pass2Driver {
+    resolved_ref_tex: String,
     assets: AssetSpecification,
     metadata_lines: Vec<String>,
 }
 
 impl Pass2Driver {
-    pub fn new(assets: AssetSpecification) -> Self {
+    pub fn new(resolved_ref_tex: String, assets: AssetSpecification) -> Self {
         Pass2Driver {
+            resolved_ref_tex,
             assets,
             metadata_lines: Default::default(),
         }
@@ -123,6 +133,7 @@ impl WorkerDriver for Pass2Driver {
     }
 
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()> {
+        writeln!(stdin, "{}\n---", self.resolved_ref_tex)?;
         self.assets.save(stdin).map_err(|e| e.into())
     }
 
@@ -156,7 +167,27 @@ impl SecondPassImplArgs {
     }
 
     fn inner(&self, status: &mut dyn StatusBackend) -> Result<(), WorkerError<Error>> {
-        // Read the asset specification from stdin.
+        // Read the resolved-reference information from stdin.
+
+        let rrtex = {
+            let mut rrtex = String::new();
+            let stdin = std::io::stdin().lock();
+
+            for line in stdin.lines() {
+                let line = gtry!(line.context("error reading line of TeX worker input"));
+
+                if line == "---" {
+                    break;
+                }
+
+                writeln!(rrtex, "{}", line).unwrap();
+            }
+
+            rrtex
+        };
+
+        // Now we can read the state information from stdin. (We can't reuse
+        // the previous stdin variable because `lines()` consumes it.)
 
         let assets = {
             let mut assets = AssetSpecification::default();
@@ -189,9 +220,10 @@ impl SecondPassImplArgs {
 
         let input = format!(
             "\\input{{preamble}} \
+            {}
             \\input{{{}}} \
             \\input{{postamble}}\n",
-            self.tex_path
+            rrtex, self.tex_path
         );
 
         let mut sess = ProcessingSessionBuilder::new_with_security(security);

@@ -1,12 +1,12 @@
 // Copyright 2022 the Tectonic Project
 // Licensed under the MIT License
 
-use std::{fs::File, io::Read};
+use std::{fmt::Write, fs::File, io::Read};
 use string_interner::{StringInterner, Symbol};
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, StatusBackend};
 
-use crate::{holey_vec::HoleyVec, multivec::MultiVec, worker_status::WorkerStatusBackend};
+use crate::{holey_vec::HoleyVec, multivec::MultiVec, worker_status::WorkerStatusBackend, InputId};
 
 use string_interner::DefaultSymbol as EntryId;
 pub type IndexId = EntryId;
@@ -77,6 +77,8 @@ impl Index {
         Ok(entry)
     }
 
+    /// Get the numeric ID associated with the given entry name, if it has been
+    /// defined.
     #[inline(always)]
     fn get(&self, name: impl AsRef<str>) -> Option<EntryId> {
         self.entries.get(name)
@@ -99,6 +101,18 @@ impl Index {
     /// Return whether the specified entry has a defined textualization.
     fn has_text(&self, entry: EntryId) -> bool {
         self.texts.holey_slot_is_filled(entry.to_usize())
+    }
+
+    /// Return the definition location of the specified entry, if it has been
+    /// defined.
+    fn get_location(&self, entry: EntryId) -> Option<OutputLocation> {
+        self.locs.get_holey_slot(entry.to_usize())
+    }
+
+    /// Return the definition text of the specified entry, if it has been
+    /// defined.
+    fn get_text(&self, entry: EntryId) -> Option<EntryText> {
+        self.texts.get_holey_slot(entry.to_usize())
     }
 
     fn iter(&self) -> impl IntoIterator<Item = (EntryId, &str)> {
@@ -313,6 +327,50 @@ impl IndexCollection {
             1 => Err(anyhow!("1 unresolved index reference")),
             n => Err(anyhow!("{} unresolved index references", n)),
         }
+    }
+
+    pub fn get_resolved_reference_tex(&self, input: InputId) -> String {
+        // Because we have validated cross-references, we can unwrap everything
+        // here without worrying about missing values.
+        let refs = self.refs.lookup(input.to_usize()).unwrap();
+        let mut tex = String::new();
+
+        for entry in refs {
+            let iname = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
+            let iindex = entry.index.to_usize();
+            let ename = self.indices[iindex].resolve(entry.entry);
+            let f = entry.flags;
+
+            if (f & IndexRefFlag::NeedsLoc as u8) != 0 {
+                let loc = self.indices[iindex].get_location(entry.entry).unwrap();
+                let o = self.indices[OUTPUTS_INDEX_INDEX].resolve(loc.output);
+                let f = self.indices[FRAGMENTS_INDEX_INDEX].resolve(loc.fragment);
+                writeln!(
+                    tex,
+                    r"\expandafter\def\csname pedia resolve**{}**{}**loc\endcsname{{{}{}}}",
+                    iname, ename, o, f
+                )
+                .unwrap();
+            }
+
+            if (f & IndexRefFlag::NeedsText as u8) != 0 {
+                let text = self.indices[iindex].get_text(entry.entry).unwrap();
+                writeln!(
+                    tex,
+                    r"\expandafter\def\csname pedia resolve**{}**{}**text tex\endcsname{{{}}}",
+                    iname, ename, text.tex
+                )
+                .unwrap();
+                writeln!(
+                    tex,
+                    r"\expandafter\def\csname pedia resolve**{}**{}**text plain\endcsname{{{}}}",
+                    iname, ename, text.plain
+                )
+                .unwrap();
+            }
+        }
+
+        tex
     }
 
     pub fn load_user_indices(&mut self) -> Result<()> {
