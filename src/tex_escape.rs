@@ -159,17 +159,14 @@ macro_rules! encode_impl {
 }
 
 encode_impl! {
-    /// The following characters are escaped:
-    ///
-    /// * `&` => `&amp;`
-    /// * `<` => `&lt;`
+    /// The following characters are escaped: `\$&#%~_^{}`.
     escape_tex;
-    /// Encode text used as regular HTML text.
+    /// Encode text for inclusion in TeX source.
     encode_tex;
-    /// Write text used as regular HTML text to a mutable `String` reference and return the encoded string slice.
+    /// Write text encoded for TeX inclusion to a mutable `String` reference and return the encoded string slice.
     encode_tex_to_string;
-    /// Write text used as regular HTML text to a mutable `Vec<u8>` reference and return the encoded data slice.
+    /// Write text encoded for TeX inclusion to a mutable `Vec<u8>` reference and return the encoded data slice.
     encode_tex_to_vec;
-    /// Write text used as regular HTML text to a writer.
+    /// Write text encoded for TeX inclusion to a writer.
     encode_tex_to_writer;
 }
