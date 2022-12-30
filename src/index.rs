@@ -6,7 +6,10 @@ use string_interner::{StringInterner, Symbol};
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, StatusBackend};
 
-use crate::{holey_vec::HoleyVec, multivec::MultiVec, worker_status::WorkerStatusBackend, InputId};
+use crate::{
+    holey_vec::HoleyVec, multivec::MultiVec, tex_escape::encode_tex_to_string,
+    worker_status::WorkerStatusBackend, InputId,
+};
 
 use string_interner::DefaultSymbol as EntryId;
 pub type IndexId = EntryId;
@@ -361,12 +364,14 @@ impl IndexCollection {
                     iname, ename, text.tex
                 )
                 .unwrap();
-                writeln!(
+                write!(
                     tex,
-                    r"\expandafter\def\csname pedia resolve**{}**{}**text plain\endcsname{{{}}}",
-                    iname, ename, text.plain
+                    r"\expandafter\def\csname pedia resolve**{}**{}**text plain\endcsname{{",
+                    iname, ename
                 )
                 .unwrap();
+                encode_tex_to_string(text.plain, &mut tex);
+                writeln!(tex, r"}}",).unwrap();
             }
         }
 

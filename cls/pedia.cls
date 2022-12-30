@@ -55,49 +55,50 @@
 % it has to appear as the last command of any macros that you define to use it.
 \makeatletter
 \newtoks{\pedia@maybeVerbatimToks}
-\ifpassone
-  \def\pedia@makeActiveWhitespace{%
-    \catcode`\ =\active%
-    \catcode`\^^I=\active%
-  }%
-  \begingroup%
-    % for our purposes, tabs are just spaces
-    \pedia@makeActiveWhitespace%
-    \gdef\pedia@defineActiveWhitespace{\def {\ }\def^^I{\ }}%
+\def\pedia@makeActiveWhitespace{%
+  \catcode`\ =\active%
+  \catcode`\^^I=\active%
+}%
+\begingroup%
+  % for our purposes, tabs are just spaces
+  \pedia@makeActiveWhitespace%
+  \gdef\pedia@defineActiveWhitespace{\def {\ }\def^^I{\ }}%
+\endgroup
+\def\pediaScanVerbatim#1{%
+  \begingroup
+  % This setup derived from fancyvrb.sty rather than the plain TeX macros.
+  % Recall that when this macro is expanded, everything here will already have
+  % been read into a token a list, so changing the catcode of `\` doesn't
+  % break our syntax here.
+  %
+  % Note that we are *not* changing the meaning of {} here, because we need
+  % balanced delimiters for our toklist scanning. TODO: offer a mode that uses
+  % different delimiters so that expressions with unbalanced braces can be
+  % read. We can't do the `\verb||` trick because that requires that tokens
+  % we're scanning are being expanded as we go, while we need to be saving
+  % them into a toklist.
+  \catcode`\\=12
+  \catcode`\$=12
+  \catcode`\&=12
+  \catcode`\#=12
+  \catcode`\%=12
+  \catcode`\~=12
+  \catcode`\_=12
+  \catcode`\^=12
+  \@noligs
+  \pedia@makeActiveWhitespace
+  \pedia@defineActiveWhitespace
+  \def\tmp@a{\pedia@afterScanVerbatim #1}%
+  \afterassignment\tmp@a
+  \global\pedia@maybeVerbatimToks=%
+}%
+% This macro is expanded after the verbatim assignment is finished; it completes
+% the handling of the verbatim text.
+\def\pedia@afterScanVerbatim{%
   \endgroup
-  \def\pediaPassOneVerbatim#1{%
-    \begingroup
-    % This setup derived from fancyvrb.sty rather than the plain TeX macros.
-    % Recall that when this macro is expanded, everything here will already have
-    % been read into a token a list, so changing the catcode of `\` doesn't
-    % break our syntax here.
-    %
-    % Note that we are *not* changing the meaning of {} here, because we need
-    % balanced delimiters for our toklist scanning. TODO: offer a mode that uses
-    % different delimiters so that expressions with unbalanced braces can be
-    % read. We can't do the `\verb||` trick because that requires that tokens
-    % we're scanning are being expanded as we go, while we need to be saving
-    % them into a toklist.
-    \catcode`\\=12
-    \catcode`\$=12
-    \catcode`\&=12
-    \catcode`\#=12
-    \catcode`\%=12
-    \catcode`\~=12
-    \catcode`\_=12
-    \catcode`\^=12
-    \@noligs
-    \pedia@makeActiveWhitespace
-    \pedia@defineActiveWhitespace
-    \def\tmp@a{\pedia@afterPassOneVerbatim #1}%
-    \afterassignment\tmp@a
-    \global\pedia@maybeVerbatimToks=%
-  }%
-  % This macro is expanded after the verbatim assignment is finished; it completes
-  % the handling of the verbatim text.
-  \def\pedia@afterPassOneVerbatim{%
-    \endgroup
-  }%
+}%
+\ifpassone
+  \let\pediaPassOneVerbatim=\pediaScanVerbatim
 \else
   % When we're not in pass 1, the tokens are scanned with normal TeX rules so
   % that control sequences are parsed. TODO: handle any special delimiters
@@ -128,31 +129,38 @@ Dhref #1}#2\special{tdux:me a}%
 Dhref #1}#2\special{tdux:me a}%
 }
 %
-% \entry{TITLE}{PLAIN-TITLE}{OUTFILE}
+% \entry{SLUG}{TEX-TITLE}{PLAIN-TITLE}
 %  Define an entry
 %
-%  Because the entry title needs to be parsed as verbatim code for
+%  Because the entry titles need to be parsed as verbatim code for
 %  indexing, the actual implementation of this command is split.
 \makeatletter
-\newcommand{\entry}{%
-  % This parses the first argument, places it in \pedia@maybeVerbatimToks,
-  % and then evaluates \entry@tail
-  \pediaPassOneVerbatim\entry@tail
+\newtoks\pedia@titletmp
+%
+\newcommand{\entry}[1]{%
+  \def\tmp@b{#1}  % this is the slug
+  % This is the stuff we can do with just the slug:
+  \tduxSetupOutput{template.html}{e/#1/index.html}
+  \def\pediaRelTop{../../}
+  \immediate\write\pediaIndex{\string\output{e/#1/index.html}}
+  \immediate\write\pediaIndex{\string\idef{entries}{#1}{}}
+  % This parses the second argument (the TeX title), places it in
+  % \pedia@maybeVerbatimToks, and then evaluates \entry@tailA
+  \pediaPassOneVerbatim\entry@tailA
 }
-\newcommand{\entry@tail}[2]{%
+\newcommand{\entry@tailA}{%
   % Render the entry title. On pass 1 it will have been parsed verbatim,
   % so any TeX constructs will appear literally. This is fine since we don't
   % actually use the pass 1 HTML!
   \the\pedia@maybeVerbatimToks%
-  %
-  \tduxSetupOutput{template.html}{e/#2/index.html}
-  \def\pediaRelTop{../../}
-  \immediate\write\pediaIndex{\string\output{e/#2/index.html}}
-  \immediate\write\pediaIndex{\string\idef{entries}{#2}{}}
+  \pedia@titletmp=\pedia@maybeVerbatimToks
+  \pediaScanVerbatim\entry@tailB
+}
+\newcommand{\entry@tailB}{%
   % The point of all of the verbatim gymnastics: we can emit the "text" of the
   % entry as the literal TeX code that the user provided, rather than whatever
   % that code expands to.
-  \immediate\write\pediaIndex{\string\itext{entries}{#2}{\the\pedia@maybeVerbatimToks}{#1}}
+  \immediate\write\pediaIndex{\string\itext{entries}{\tmp@b}{\the\pedia@titletmp}{\the\pedia@maybeVerbatimToks}}
 }
 \makeatother
 %

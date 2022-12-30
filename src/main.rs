@@ -17,6 +17,7 @@ mod pass1;
 mod pass2;
 #[macro_use]
 mod texworker;
+mod tex_escape;
 mod worker_status;
 
 use worker_status::WorkerStatusBackend;
