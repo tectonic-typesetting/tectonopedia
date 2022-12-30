@@ -40,9 +40,75 @@
 %
 \tduxAddTemplate{template.html}
 \tduxSetTemplateVariable{tduxDocumentTitle}{Set tduxDocumentTitle}
+%
 % Logging indexing metadata
 \newwrite\pediaIndex
-\openout\pediaIndex=pedia.txt
+\immediate\openout\pediaIndex=pedia.txt
+%
+% For some things, during pass one we want to scan text as verbatim, but in pass
+% 2 we want to actually evaluate the tokens. The construct
+% \pediaPassOneVerbatim{AFTER}{TEXT} helps with that. It scans the braced
+% expression TEXT into the toklist \pedia@maybeVerbatimToks, and then expands
+% out the argument AFTER. In pass 1, TEXT will be scanned in "verbatim mode",
+% while otherwise it will be scanned with the usual TeX tokenization rules. Due
+% to the way that TeX's tokenization works, this is a super fragile command, and
+% it has to appear as the last command of any macros that you define to use it.
+\makeatletter
+\newtoks{\pedia@maybeVerbatimToks}
+\ifpassone
+  \def\pedia@makeActiveWhitespace{%
+    \catcode`\ =\active%
+    \catcode`\^^I=\active%
+  }%
+  \begingroup%
+    % for our purposes, tabs are just spaces
+    \pedia@makeActiveWhitespace%
+    \gdef\pedia@defineActiveWhitespace{\def {\ }\def^^I{\ }}%
+  \endgroup
+  \def\pediaPassOneVerbatim#1{%
+    \begingroup
+    % This setup derived from fancyvrb.sty rather than the plain TeX macros.
+    % Recall that when this macro is expanded, everything here will already have
+    % been read into a token a list, so changing the catcode of `\` doesn't
+    % break our syntax here.
+    %
+    % Note that we are *not* changing the meaning of {} here, because we need
+    % balanced delimiters for our toklist scanning. TODO: offer a mode that uses
+    % different delimiters so that expressions with unbalanced braces can be
+    % read. We can't do the `\verb||` trick because that requires that tokens
+    % we're scanning are being expanded as we go, while we need to be saving
+    % them into a toklist.
+    \catcode`\\=12
+    \catcode`\$=12
+    \catcode`\&=12
+    \catcode`\#=12
+    \catcode`\%=12
+    \catcode`\~=12
+    \catcode`\_=12
+    \catcode`\^=12
+    \@noligs
+    \pedia@makeActiveWhitespace
+    \pedia@defineActiveWhitespace
+    \def\tmp@a{\pedia@afterPassOneVerbatim #1}%
+    \afterassignment\tmp@a
+    \global\pedia@maybeVerbatimToks=%
+  }%
+  % This macro is expanded after the verbatim assignment is finished; it completes
+  % the handling of the verbatim text.
+  \def\pedia@afterPassOneVerbatim{%
+    \endgroup
+  }%
+\else
+  % When we're not in pass 1, the tokens are scanned with normal TeX rules so
+  % that control sequences are parsed. TODO: handle any special delimiters
+  % provided above.
+  \def\pediaPassOneVerbatim#1{%
+    \def\tmp@a{#1}%
+    \afterassignment\tmp@a
+    \global\pedia@maybeVerbatimToks=%
+  }%
+\fi
+\makeatother
 %
 \let\justTeX=\TeX
 \def\TeX{\special{tdux:cs math}\justTeX\special{tdux:ce math}}
@@ -64,16 +130,31 @@ Dhref #1}#2\special{tdux:me a}%
 %
 % \entry{TITLE}{PLAIN-TITLE}{OUTFILE}
 %  Define an entry
-\newcommand{\entry}[3]{%
-  #1
-  \tduxSetupOutput{template.html}{e/#3/index.html}
-  \def\pediaRelTop{../../}
-  \write\pediaIndex{\string\output{e/#3/index.html}}
-  \write\pediaIndex{\string\idef{entries}{#3}{}}
-  % TODO: deploy some magic to express the title verbatim-ly
-  % in the metadata file.
-  \write\pediaIndex{\string\itext{entries}{#3}{#1}{#2}}
+%
+%  Because the entry title needs to be parsed as verbatim code for
+%  indexing, the actual implementation of this command is split.
+\makeatletter
+\newcommand{\entry}{%
+  % This parses the first argument, places it in \pedia@maybeVerbatimToks,
+  % and then evaluates \entry@tail
+  \pediaPassOneVerbatim\entry@tail
 }
+\newcommand{\entry@tail}[2]{%
+  % Render the entry title. On pass 1 it will have been parsed verbatim,
+  % so any TeX constructs will appear literally. This is fine since we don't
+  % actually use the pass 1 HTML!
+  \the\pedia@maybeVerbatimToks%
+  %
+  \tduxSetupOutput{template.html}{e/#2/index.html}
+  \def\pediaRelTop{../../}
+  \immediate\write\pediaIndex{\string\output{e/#2/index.html}}
+  \immediate\write\pediaIndex{\string\idef{entries}{#2}{}}
+  % The point of all of the verbatim gymnastics: we can emit the "text" of the
+  % entry as the literal TeX code that the user provided, rather than whatever
+  % that code expands to.
+  \immediate\write\pediaIndex{\string\itext{entries}{#2}{\the\pedia@maybeVerbatimToks}{#1}}
+}
+\makeatother
 %
 % \pediaLogRef{INDEX}{ENTRY}{FLAGS}
 %  Log a reference to an index entry in the metadata file.

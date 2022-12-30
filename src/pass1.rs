@@ -247,7 +247,9 @@ impl FirstPassImplArgs {
         };
 
         let input = format!(
-            "\\input{{preamble}} \
+            "\\newif\\ifpassone \
+            \\passonetrue \
+            \\input{{preamble}} \
             \\input{{{}}} \
             \\input{{postamble}}\n",
             self.tex_path

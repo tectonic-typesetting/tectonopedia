@@ -219,8 +219,10 @@ impl SecondPassImplArgs {
             .with_context(|| format!("cannot create output directory `{}`", out_dir.display())));
 
         let input = format!(
-            "\\input{{preamble}} \
-            {}
+            "\\newif\\ifpassone \
+            \\passonefalse \
+            \\input{{preamble}} \
+            {} \
             \\input{{{}}} \
             \\input{{postamble}}\n",
             rrtex, self.tex_path
