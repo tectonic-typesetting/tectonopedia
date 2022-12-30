@@ -196,7 +196,7 @@ Dhref #1}#2\special{tdux:me a}%
   \hrefInternal{%
     \pediaRelTop\csname pedia resolve**#1**#2**loc\endcsname%
    }{%
-    \csname pedia resolve**#1**#2**text plain\endcsname
+    \csname pedia resolve**#1**#2**text tex\endcsname
    }
 }
 %
