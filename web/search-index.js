@@ -47,7 +47,10 @@ class IndexLoadManager {
         if (this.depth == 0) {
             console.log(`Writing index of ${this.n_tasks} documents ...`);
             const ser = this.index.toJSON();
-            fs.writeFileSync("build/search_index.json", JSON.stringify(ser));
+
+            // We have to write the index with a non-JSON extension because
+            // otherwise Parcel.js will transform it when we `require()` it.
+            fs.writeFileSync("build/search_index.json.data", JSON.stringify(ser));
         }
     }
 }

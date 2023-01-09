@@ -1040,6 +1040,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/elasticlunrjs@npm:1.0.0":
+  version: 1.0.0
+  resolution: "@types/elasticlunrjs@npm:1.0.0"
+  checksum: cec31c2ba76c264dc84aa7848f993dd8e3e77ee2907602fb075766774b81e2da7ab79c560a039e06531b7dbe8df3953c052bbe8b571cf768fabdf11c6d265856
+  languageName: node
+  linkType: hard
+
 "@types/parse-json@npm:^4.0.0":
   version: 4.0.0
   resolution: "@types/parse-json@npm:4.0.0"
@@ -2345,10 +2352,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"elasticlunrjs@npm:1.0.1":
-  version: 1.0.1
-  resolution: "elasticlunrjs@npm:1.0.1"
-  checksum: e7be494ed6b1cfaa18c3f0bcd5efe56084c54ff622ebeb3850fc1c108e1efe2d2762da3a3f4a9dc7cf6818a19af52fae64102df104b98e4258c7cb594806daa3
+"elasticlunrjs@npm:1.0.0":
+  version: 1.0.0
+  resolution: "elasticlunrjs@npm:1.0.0"
+  checksum: 9df551775b96c4502608ae98304479c80c085b265ec1ffb3030cb9e9652335859a1899db86214129b23f5a2849ab1b7e8c1a379cff9f2b193a199192ac477330
   languageName: node
   linkType: hard
 
@@ -5203,7 +5210,8 @@ __metadata:
     "@fortawesome/vue-fontawesome": ^3.0.1
     "@parcel/transformer-sass": ^2.7
     "@parcel/transformer-vue": ^2.8
-    elasticlunrjs: 1.0.1
+    "@types/elasticlunrjs": 1.0.0
+    elasticlunrjs: 1.0.0
     gulp: ^4.0.2
     gulp-format-html: ^1.2.7
     gulp-html: ^5.0.0

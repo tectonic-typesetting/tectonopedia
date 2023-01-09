@@ -11,7 +11,8 @@
   "devDependencies": {
     "@parcel/transformer-sass": "^2.7",
     "@parcel/transformer-vue": "^2.8",
-    "elasticlunrjs": "1.0.1",
+    "@types/elasticlunrjs": "1.0.0",
+    "elasticlunrjs": "1.0.0",
     "gulp": "^4.0.2",
     "gulp-format-html": "^1.2.7",
     "gulp-html": "^5.0.0",
