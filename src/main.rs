@@ -2,7 +2,7 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::{fs::File, time::Instant};
+use std::{fs::File, io::Write, time::Instant};
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
@@ -101,9 +101,17 @@ impl BuildArgs {
 
         // Pass 2, emitting
 
-        let entrypoints_file = atry!(
+        let mut entrypoints_file = atry!(
             File::create("build/_all.html");
             ["error creating output `build/_all.html`"]
+        );
+
+        // By adding the script reference here, we get Parcel.js to emit the
+        // associated built files under this file's name. Otherwise they get
+        // tied to whatever happens to be the first entry that we emit.
+        atry!(
+            writeln!(entrypoints_file, "<script src=\"../web/index.ts\" type=\"module\"></script>");
+            ["error writing to output `build/_all.html`"]
         );
 
         let mut p2r = pass2::Pass2Reducer::new(assets, indices, entrypoints_file);

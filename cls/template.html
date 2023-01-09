@@ -7,30 +7,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
   <title>Tectonopedia Page</title>
   <link rel="stylesheet" href="{{ tduxRelTop }}tdux-fonts.css">
-  <link rel="stylesheet" href="{{ tduxRelTop }}../cls/style.scss">
 </head>
 
 <body>
-  <div id="page-wrapper" class="page-wrapper">
-    <div class="page">
-      <div id="menu-bar-hover-placeholder"></div>
-      <div id="menu-bar" class="menu-bar sticky bordered">
-        <div class="left-buttons">
-          <button class="icon-button" type="button">
-            =
-          </button>
-        </div>
-
-        <h1 class="menu-title">Title!</h1>
-      </div>
-
-      <div id="content" class="content">
-        <main id="main">
-          {{ tduxContent | safe }}
-        </main>
-      </div>
-    </div>
+  <!-- The Vue app will parse and rebuild this content inside its VDOM: -->
+  <div id="content">
+    {{ tduxContent | safe }}
   </div>
+
+  <script src="{{ tduxRelTop }}../web/index.ts" type="module"></script>
 </body>
 
 </html>

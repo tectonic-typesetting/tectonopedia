@@ -1,20 +1,28 @@
 {
   "browserslist": "> 0.5%, last 2 versions, not dead",
   "dependencies": {
-    "elasticlunrjs": "1.0.1"
+    "@fortawesome/fontawesome-svg-core": "^6.1.2",
+    "@fortawesome/free-solid-svg-icons": "^6.1.2",
+    "@fortawesome/vue-fontawesome": "^3.0.1",
+    "elasticlunrjs": "1.0.1",
+    "vue": "^3.2.37",
+    "vue-resize": "^2.0.0-alpha.1"
   },
   "devDependencies": {
     "@parcel/transformer-sass": "^2.7",
+    "@parcel/transformer-vue": "^2.8",
     "elasticlunrjs": "1.0.1",
     "gulp": "^4.0.2",
     "gulp-format-html": "^1.2.7",
     "gulp-html": "^5.0.0",
     "htmlparser2": "^8",
-    "parcel": "^2.7"
+    "parcel": "^2.7",
+    "typescript": "^4.7"
   },
   "license": "MIT",
   "scripts": {
     "build": "parcel build build/_all.html",
+    "check": "tsc --noEmit",
     "index": "node web/search-index.js",
     "serve": "parcel serve build/_all.html",
     "prettify": "gulp"
