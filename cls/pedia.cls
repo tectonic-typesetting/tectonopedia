@@ -138,7 +138,9 @@ Dhref #1}#2\special{tdux:me a}%
 \newtoks\pedia@titletmp
 %
 \newcommand{\entry}[1]{%
-  \def\tmp@b{#1}  % this is the slug
+  % save the slug:
+  \def\tmp@b{#1}%
+
   % This is the stuff we can do with just the slug:
   \tduxSetupOutput{template.html}{e/#1/index.html}
   \def\pediaRelTop{../../}
@@ -161,6 +163,9 @@ Dhref #1}#2\special{tdux:me a}%
   % entry as the literal TeX code that the user provided, rather than whatever
   % that code expands to.
   \immediate\write\pediaIndex{\string\itext{entries}{\tmp@b}{\the\pedia@titletmp}{\the\pedia@maybeVerbatimToks}}
+
+  % Finally we can also set the page title
+  \tduxSetTemplateVariable{pediaTitle}{\the\pedia@maybeVerbatimToks}
 }
 \makeatother
 %

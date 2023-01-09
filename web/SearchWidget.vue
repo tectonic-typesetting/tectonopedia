@@ -3,6 +3,12 @@
     <form @submit.prevent="onSubmit">
       <input ref="input" v-model="text" type="search" id="search-entry" name="search-entry" placeholder="Search ..." />
     </form>
+
+    <ol>
+      <li v-for="r in results">
+        <SearchResult :title="r.title" snippet="snippet ..." url="zz"></SearchResult>
+      </li>
+    </ol>
   </div>
 </template>
 
@@ -14,14 +20,30 @@
 
   font-size: 110%;
 }
+
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+li {
+  border: 2px solid #eee;
+  margin: 0.1rem 0;
+  padding: 2px;
+  border-radius: 4px;
+}
 </style>
 
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
 import * as elasticlunr from "elasticlunrjs";
 
+import SearchResult from "./SearchResult.vue";
+
 const input = ref<HTMLInputElement | null>(null);
 const text = ref("");
+const results = ref<IndexDoc[]>([]);
 
 type IndexDoc = {
   relpath: String,
@@ -42,7 +64,7 @@ function ensureIndexPromise() {
     indexPromise = fetch(INDEX_URL).then((resp) => {
       return resp.json() as Promise<elasticlunr.SerialisedIndexData<IndexDoc>>
     }).then((json) => {
-      return elasticlunr.Index.load(json)
+      return elasticlunr.Index.load(json);
     });
   }
 }
@@ -56,14 +78,22 @@ function onSubmit() {
 
   if (query != "") {
     indexPromise.then((index) => {
-      const results = index.search(query, {
+      const lunr_results = index.search(query, {
+        bool: "AND",
+        expand: true,
         fields: {
           title: { boost: 2 },
           content: { boost: 1 }
         }
       });
 
-      console.log(results);
+      results.value.length = 0;
+
+      for (const r of lunr_results) {
+        const doc = index.documentStore.getDoc(r.ref);
+        console.log(doc);
+        results.value.push(doc);
+      }
     });
   }
 }

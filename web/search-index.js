@@ -26,7 +26,7 @@ class IndexLoadManager {
         this.index.addField('title');
         this.index.addField('content');
         this.index.setRef('relpath');
-        this.index.saveDocument(false);
+        this.index.saveDocument(true);
 
         this.depth = 1;
         this.n_tasks = 0;
