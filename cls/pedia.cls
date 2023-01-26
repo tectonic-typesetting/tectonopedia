@@ -166,6 +166,7 @@ Dhref #1}#2\special{tdux:me a}%
 
   % Finally we can also set the page title
   \tduxSetTemplateVariable{pediaTitle}{\the\pedia@maybeVerbatimToks}
+  \tduxSetTemplateVariable{pediaBookName}{Tectonopedia}
 }
 \makeatother
 %

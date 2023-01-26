@@ -25,9 +25,10 @@ library.add(faBars);
 // rely on JS-based server-side rendering.
 
 const title = document.getElementById("title").innerText;
+const bookName = document.getElementById("bookname").innerText;
 const content = document.getElementById("content").innerHTML;
 
-const app = createApp(App, { content, title });
+const app = createApp(App, { content, title, bookName });
 app.component("ResizeObserver", ResizeObserver);
 app.component("FontAwesomeIcon", FontAwesomeIcon);
 app.mount("#app");

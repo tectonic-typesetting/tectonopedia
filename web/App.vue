@@ -10,7 +10,7 @@
             </button>
           </div>
 
-          <h1 class="menu-title" v-text="title"></h1>
+          <h1 class="menu-title" v-text="bookName"></h1>
         </div>
 
         <div id="content" class="content">
@@ -35,6 +35,7 @@ import ModalManager from "./ModalManager.vue";
 const props = defineProps({
   content: { type: String, required: true },
   title: { type: String, required: true },
+  bookName: { type: String, required: true },
 });
 
 const modalManager = ref();
