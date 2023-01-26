@@ -10,6 +10,15 @@ The Tectonic reference encyclopedia.
 - `web`: web application frontend code
 
 
+## Current Workflow
+
+The wrapper program should eventually automate these steps
+
+- `cargo run --release -- build`
+- `yarn index`
+- `yarn build` or `yarn serve`
+
+
 ## Legalities
 
 The source code underlying the Tectonopedia is licensed under the MIT License

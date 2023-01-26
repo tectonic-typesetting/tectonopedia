@@ -24,10 +24,10 @@ library.add(faBars);
 // gross and terrible, and is certainly inefficient, but I really don't want to
 // rely on JS-based server-side rendering.
 
-const title = document.title;
+const title = document.getElementById("title").innerText;
 const content = document.getElementById("content").innerHTML;
 
 const app = createApp(App, { content, title });
 app.component("ResizeObserver", ResizeObserver);
 app.component("FontAwesomeIcon", FontAwesomeIcon);
-app.mount("#content");
+app.mount("#app");

@@ -74,9 +74,9 @@ class DocLoader {
                 self.tag_depth += 1;
 
                 if (self.state == "ignoring") {
-                    if (name == "title") {
+                    if (name == "h1" && attributes.id == "title") {
                         self.state = "title";
-                    } else if (name == "div" && attributes.id == "content") {
+                    } else if (name == "main" && attributes.id == "content") {
                         self.state = "content";
                         self.content_tag_depth = self.tag_depth - 1;
                     }

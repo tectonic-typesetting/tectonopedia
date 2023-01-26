@@ -10,9 +10,10 @@
 </head>
 
 <body>
-  <!-- The Vue app will parse and rebuild this content inside its VDOM: -->
-  <div id="content">
-    {{ tduxContent | safe }}
+  <div id="app">
+    <!-- The Vue app will parse and rebuild this content inside its VDOM: -->
+    <h1 id="title">{{ pediaTitle }}</h1>
+    <main id="content">{{ tduxContent | safe }}</main>
   </div>
 
   <script src="{{ tduxRelTop }}../web/index.ts" type="module"></script>
