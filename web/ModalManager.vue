@@ -97,8 +97,9 @@
   font-size: 2em;
   border: none;
   border-radius: 5px;
+  height: var(--menu-bar-height);
 
-  background-color: #fff;
+  background: none;
   color: var(--icons);
 
   &:hover {
@@ -123,6 +124,14 @@
   border-bottom-color: var(--table-border-color);
 
   color: var(--icons);
+
+  // Modals "blue pages", with a faint blue pattern
+  // in the menu bar.
+  background: repeating-linear-gradient(120deg,
+      var(--bg),
+      var(--bg) 4px,
+      #f6fbff 4px,
+      #f6fbff 8px);
 }
 
 .modal-menu-title {
