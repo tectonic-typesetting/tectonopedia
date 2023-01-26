@@ -23,7 +23,7 @@
 
       <!-- The "search" model provides access to the search UI. -->
       <div v-show="active == ModalKind.Search" class="modal-container page-wrapper">
-        <SearchModal></SearchModal>
+        <SearchModal ref="search"></SearchModal>
       </div>
 
       <button type="button" @click="clear" class="close-button" title="Close overlay" aria-label="Close overlay">
@@ -113,17 +113,20 @@ import HelpModal from "./HelpModal.vue";
 import SearchModal from "./SearchModal.vue";
 
 const active = ref(ModalKind.None);
+const search = ref()
 
 function clear() {
   active.value = ModalKind.None;
 }
 
 
-function toggleBasic(kind: ModalKind) {
+function toggleBasic(kind: ModalKind): boolean {
   if (active.value == kind) {
     active.value = ModalKind.None;
+    return false;
   } else {
     active.value = kind;
+    return true;
   }
 }
 
@@ -137,7 +140,9 @@ function toggleHelp() {
 }
 
 function toggleSearch() {
-  toggleBasic(ModalKind.Search);
+  if (toggleBasic(ModalKind.Search)) {
+    search.value?.activate();
+  }
 }
 
 function onDoModal(kind: ModalKind) {
