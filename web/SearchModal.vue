@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="content-aligned">
     <form @submit.prevent="onSubmit">
       <input ref="input" v-model="text" type="search" id="search-entry" name="search-entry" placeholder="Search ..." />
     </form>

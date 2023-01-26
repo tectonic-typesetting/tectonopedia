@@ -5,7 +5,7 @@
         <div id="menu-bar-hover-placeholder"></div>
         <div id="menu-bar" class="menu-bar sticky bordered">
           <div class="left-buttons">
-            <button class="icon-button" type="button">
+            <button class="icon-button" type="button" @click="onDispatchClicked">
               <FontAwesomeIcon icon="fa-solid fa-bars" />
             </button>
           </div>
@@ -14,17 +14,12 @@
         </div>
 
         <div id="content" class="content">
-          <div class="main" v-show="searchActivated">
-            <SearchWidget ref="searchWidget"></SearchWidget>
-          </div>
-
           <main id="main" class="main" v-html="content"></main>
         </div>
       </div>
     </div>
 
-    <!-- <ModalManager ref="modalManager" @gotoModule="onGotoModule" @startPaging="onStartPaging"
-      @showCurrentModInfo="onShowCurrentModInfo"></ModalManager> -->
+    <ModalManager ref="modalManager"></ModalManager>
   </div>
 
 </template>
@@ -35,15 +30,20 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import SearchWidget from "./SearchWidget.vue";
+import ModalManager from "./ModalManager.vue";
 
 const props = defineProps({
   content: { type: String, required: true },
   title: { type: String, required: true },
 });
 
-const searchWidget = ref();
-const searchActivated = ref(false);
+const modalManager = ref();
+
+// Local event handlers
+
+function onDispatchClicked() {
+  modalManager.value?.toggleDispatch();
+}
 
 // Global keybindings
 
@@ -56,8 +56,21 @@ const keydownHandlers = {
   "/": (event: KeyboardEvent) => {
     if (noModifiers(event)) {
       event.preventDefault();
-      searchActivated.value = true;
-      searchWidget.value?.activate();
+      modalManager.value?.toggleSearch();
+    }
+  },
+
+  "?": (event: KeyboardEvent) => {
+    if (noModifiers(event)) {
+      event.preventDefault();
+      modalManager.value?.toggleHelp();
+    }
+  },
+
+  Escape: (event: KeyboardEvent) => {
+    if (noModifiers(event)) {
+      event.preventDefault();
+      modalManager.value?.clear();
     }
   },
 };
