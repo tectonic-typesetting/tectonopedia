@@ -1,11 +1,11 @@
 <template>
-  <div class="content-aligned">
+  <div class="content-aligned" @keydown="onKeydown">
     <form @submit.prevent="onSubmit">
       <input ref="input" v-model="text" type="search" id="search-entry" name="search-entry" placeholder="Search ..." />
     </form>
 
     <ol>
-      <li v-for="r in results">
+      <li v-for="(r, index) in results" :class="{ 'selected': selected == index }" @click="onResultClick(index)">
         <SearchResult :title="r.title" snippet="snippet ..." url="zz"></SearchResult>
       </li>
     </ol>
@@ -32,6 +32,10 @@ li {
   margin: 0.1rem 0;
   padding: 2px;
   border-radius: 4px;
+
+  &.selected {
+    border: 2px solid var(--links);
+  }
 }
 </style>
 
@@ -44,6 +48,7 @@ import SearchResult from "./SearchResult.vue";
 const input = ref<HTMLInputElement | null>(null);
 const text = ref("");
 const results = ref<IndexDoc[]>([]);
+const selected = ref(-1);
 
 type IndexDoc = {
   relpath: String,
@@ -98,6 +103,10 @@ function onSubmit() {
   }
 }
 
+function onResultClick(index: number) {
+  selected.value = index;
+}
+
 function activate() {
   // If needed, start loading the search index.
   ensureIndexPromise();
@@ -107,6 +116,46 @@ function activate() {
   nextTick(() => {
     input.value?.focus();
   });
+}
+
+// Keybindings
+
+function noModifiers(event: KeyboardEvent): boolean {
+  // NB, currently not checking shiftKey
+  return !(event.altKey || event.ctrlKey || event.metaKey);
+}
+
+const keydownHandlers = {
+  "ArrowDown": (event: KeyboardEvent) => {
+    if (noModifiers(event)) {
+      event.preventDefault();
+
+      if (selected.value < 0) {
+        selected.value = 0;
+      } else if (selected.value < results.value.length - 1) {
+        selected.value += 1;
+      }
+    }
+  },
+
+  "ArrowUp": (event: KeyboardEvent) => {
+    if (noModifiers(event)) {
+      event.preventDefault();
+
+      // If nothing is selected, don't initiate a selection. I think that's the
+      // behavior we want.
+      if (selected.value > 0) {
+        selected.value -= 1;
+      }
+    }
+  },
+};
+
+function onKeydown(event: KeyboardEvent) {
+  const handler = keydownHandlers[event.key];
+  if (handler !== undefined) {
+    handler(event);
+  }
 }
 
 defineExpose({
