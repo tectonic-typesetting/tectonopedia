@@ -154,7 +154,8 @@ Dhref #1}#2\special{tdux:me a}%
   % Render the entry title. On pass 1 it will have been parsed verbatim,
   % so any TeX constructs will appear literally. This is fine since we don't
   % actually use the pass 1 HTML!
-  \the\pedia@maybeVerbatimToks%
+  \pediaTitle{\the\pedia@maybeVerbatimToks}%
+  %
   \pedia@titletmp=\pedia@maybeVerbatimToks
   \pediaScanVerbatim\entry@tailB
 }
@@ -210,4 +211,10 @@ Dhref #1}#2\special{tdux:me a}%
 %  Create an internal <a> link to the specified encyclopedia entry.
 \newcommand{\e}[1]{%
   \pediaLinkRef{entries}{#1}
+}
+%
+% \pediaTitle{TEXT}
+%   Render a page title
+\newcommand{\pediaTitle}[1]{%
+  {\Large\textbf{\special{tdux:mfs div^^JCpedia-pagetitle}#1\special{tdux:me div}}}%
 }
