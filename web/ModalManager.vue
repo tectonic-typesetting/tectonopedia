@@ -136,7 +136,8 @@
 
 .modal-menu-title {
   display: inline-block;
-  font-weight: 200;
+  font-family: tduxSans;
+  font-weight: 400;
   font-size: 1.3rem;
   line-height: var(--menu-bar-height);
   text-align: center;

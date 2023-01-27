@@ -20,6 +20,14 @@
   ItalicFont = *-italic,
   BoldItalicFont = *-bolditalic,
 ]
+\setsansfont{texgyreheros}[%
+  Ligatures = TeX,
+  Extension = .otf,
+  UprightFont = *-regular,
+  BoldFont = *-bold,
+  ItalicFont = *-italic,
+  BoldItalicFont = *-bolditalic,
+]
 \setmonofont{SourceCodePro}[%
   Ligatures = TeX,
   Extension = .otf,
