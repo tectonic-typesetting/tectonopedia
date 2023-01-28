@@ -11,6 +11,9 @@
           </div>
 
           <h1 class="menu-title" v-text="bookName"></h1>
+
+          <div class="right-buttons">
+          </div>
         </div>
 
         <div id="content" class="content">

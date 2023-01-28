@@ -363,17 +363,21 @@ a:visited {
   margin: 0;
 }
 
-.right-buttons {
-  margin: 0 15px;
-}
-
-.right-buttons a {
-  text-decoration: none;
-}
-
 .left-buttons {
-  display: flex;
+  flex: 1 0 30px;
   margin: 0 5px;
+  display: flex;
+}
+
+.right-buttons {
+  flex: 1 0 30px;
+  margin: 0 15px;
+  display: flex;
+  flex-direction: row-reverse;
+
+  a {
+    text-decoration: none;
+  }
 }
 
 .menu-title {

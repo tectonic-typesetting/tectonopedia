@@ -12,6 +12,8 @@
       <!-- This has the same layout as the app's menu bar, to provide a nice
         title for the modal that matches the high-level page layout -->
       <div id="modal-menu-bar" class="modal-menu-bar">
+        <div class="left-buttons"></div>
+
         <h1 class="modal-menu-title" v-text="modalTitle"></h1>
 
         <div class="right-buttons">
@@ -41,7 +43,7 @@
   </div>
 </template>
 
-<style lang="scss">
+<style lang="scss" scoped>
 // Derived from
 // https://rapaccinim.medium.com/how-to-create-a-custom-resizable-modal-with-scrollable-and-fixed-content-21adb2adda28
 
@@ -146,14 +148,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.right-buttons {
-  margin: 0 15px;
-}
-
-.right-buttons a {
-  text-decoration: none;
 }
 </style>
 
