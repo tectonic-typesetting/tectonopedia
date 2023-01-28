@@ -186,7 +186,7 @@ Dhref #1}#2\special{tdux:me a}%
 %  must be defined. A "t" in the flags indicates that the entry's
 %  text must be defined.
 \newcommand{\pediaLogRef}[3]{%
-  \write\pediaIndex{\string\iref{#1}{#2}{#3}}
+  \write\pediaIndex{\string\iref{#1}{#2}{#3}}%
 }
 %
 % \pediaEnsureRefCS{INDEX}{ENTRY}{DATATYPE}
@@ -197,7 +197,7 @@ Dhref #1}#2\special{tdux:me a}%
 %  driver.
 \newcommand{\pediaEnsureRefCS}[3]{%
   \unless\ifcsname pedia resolve**#1**#2**#3\endcsname
-    \expandafter\def\csname pedia resolve**#1**#2**#3\endcsname{?}
+    \expandafter\def\csname pedia resolve**#1**#2**#3\endcsname{?}%
   \fi
 }
 %
@@ -205,20 +205,20 @@ Dhref #1}#2\special{tdux:me a}%
 %  Create an internal <a> link to an index entry with a defined location
 %  and textual representation.
 \newcommand{\pediaLinkRef}[2]{%
-  \pediaLogRef{#1}{#2}{lt}
-  \pediaEnsureRefCS{#1}{#2}{loc}
-  \pediaEnsureRefCS{#1}{#2}{text plain}
+  \pediaLogRef{#1}{#2}{lt}%
+  \pediaEnsureRefCS{#1}{#2}{loc}%
+  \pediaEnsureRefCS{#1}{#2}{text plain}%
   \hrefInternal{%
     \pediaRelTop\csname pedia resolve**#1**#2**loc\endcsname%
    }{%
-    \csname pedia resolve**#1**#2**text tex\endcsname
-   }
+    \csname pedia resolve**#1**#2**text tex\endcsname%
+   }%
 }
 %
 % \e{ENTRY}
 %  Create an internal <a> link to the specified encyclopedia entry.
 \newcommand{\e}[1]{%
-  \pediaLinkRef{entries}{#1}
+  \pediaLinkRef{entries}{#1}%
 }
 %
 % \pediaTitle{TEXT}
