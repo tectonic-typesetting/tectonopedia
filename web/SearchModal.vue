@@ -4,8 +4,8 @@
       <input ref="input" v-model="text" type="search" id="search-entry" name="search-entry" placeholder="Search ..." />
     </form>
 
-    <ol>
-      <li v-for="(r, index) in results" :class="{ 'selected': selected == index }" @click="onResultClick(index)">
+    <ol ref="searchResultsList">
+      <li v-for="r in results" class="search-result" tabindex="0">
         <SearchResult :title="r.title" snippet="snippet ..." url="zz"></SearchResult>
       </li>
     </ol>
@@ -15,8 +15,7 @@
 <style lang="scss" scoped>
 #search-entry {
   width: 100%;
-  margin-top: 5px;
-  margin-bottom: 0.2rem;
+  margin: 1rem 0;
 
   font-size: 110%;
 }
@@ -33,14 +32,14 @@ li {
   padding: 2px;
   border-radius: 4px;
 
-  &.selected {
+  &:focus {
     border: 2px solid var(--links);
   }
 }
 </style>
 
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { nextTick, ref, watch } from "vue";
 import * as elasticlunr from "elasticlunrjs";
 
 import SearchResult from "./SearchResult.vue";
@@ -48,7 +47,7 @@ import SearchResult from "./SearchResult.vue";
 const input = ref<HTMLInputElement | null>(null);
 const text = ref("");
 const results = ref<IndexDoc[]>([]);
-const selected = ref(-1);
+const searchResultsList = ref<HTMLElement | null>(null);
 
 type IndexDoc = {
   relpath: String,
@@ -103,10 +102,6 @@ function onSubmit() {
   }
 }
 
-function onResultClick(index: number) {
-  selected.value = index;
-}
-
 function activate() {
   // If needed, start loading the search index.
   ensureIndexPromise();
@@ -126,29 +121,49 @@ function noModifiers(event: KeyboardEvent): boolean {
 }
 
 const keydownHandlers = {
+  // Make it so that arrow keys can navigate the focus between the search entry
+  // and the results.
   "ArrowDown": (event: KeyboardEvent) => {
     if (noModifiers(event)) {
-      event.preventDefault();
+      // If the search entry is focused, navigate to the first result, if it
+      // exists.
+      if (document.querySelector("#search-entry:focus") !== null) {
+        const results = searchResultsList.value?.children;
 
-      if (selected.value < 0) {
-        selected.value = 0;
-      } else if (selected.value < results.value.length - 1) {
-        selected.value += 1;
+        if (results.length > 0) {
+          results[0].focus();
+          event.preventDefault();
+        }
+
+        return;
+      }
+
+      // Otherwise, if a result is focused, navigate to the next one, if it exists.
+      const focusedResult = document.querySelector(".search-result:focus");
+      if (focusedResult?.nextElementSibling !== null) {
+        focusedResult.nextElementSibling.focus();
+        event.preventDefault();
       }
     }
   },
 
   "ArrowUp": (event: KeyboardEvent) => {
     if (noModifiers(event)) {
-      event.preventDefault();
+      const focusedResult = document.querySelector(".search-result:focus");
 
-      // If nothing is selected, don't initiate a selection. I think that's the
-      // behavior we want.
-      if (selected.value > 0) {
-        selected.value -= 1;
+      if (focusedResult !== null) {
+        if (focusedResult.previousElementSibling === null) {
+          // If we're on the first result, focus back to the entry
+          input.value?.focus();
+        } else {
+          // Otherwise, we have a previous result to go to.
+          focusedResult.previousElementSibling.focus();
+        }
+
+        event.preventDefault();
       }
     }
-  },
+  }
 };
 
 function onKeydown(event: KeyboardEvent) {
