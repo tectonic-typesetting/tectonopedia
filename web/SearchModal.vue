@@ -90,7 +90,7 @@ function onSubmit() {
         bool: "AND",
         expand: true,
         fields: {
-          title: { boost: 2 },
+          title: { boost: 5 },
           content: { boost: 1 }
         }
       });
@@ -99,7 +99,6 @@ function onSubmit() {
 
       for (const r of lunr_results) {
         const doc = index.documentStore.getDoc(r.ref);
-        console.log(doc);
         results.value.push(doc);
       }
     });
