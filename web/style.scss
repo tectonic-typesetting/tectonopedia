@@ -291,9 +291,8 @@ html {
   scrollbar-color: var(--scrollbar) var(--bg);
 }
 
-#searchresults a,
 .content a:link,
-a:visited {
+.content a:visited {
   color: var(--links);
 }
 

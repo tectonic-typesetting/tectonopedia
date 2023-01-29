@@ -6,7 +6,7 @@
 
     <ol ref="searchResultsList">
       <li v-for="r in results" class="search-result" tabindex="0">
-        <SearchResult :title="r.title" snippet="snippet ..." url="zz"></SearchResult>
+        <SearchResult :title="r.title" snippet="snippet ..." :url="relTop + r.relpath"></SearchResult>
       </li>
     </ol>
   </div>
@@ -39,10 +39,14 @@ li {
 </style>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { nextTick, ref } from "vue";
 import * as elasticlunr from "elasticlunrjs";
 
 import SearchResult from "./SearchResult.vue";
+
+defineProps({
+  relTop: { type: String, required: true },
+});
 
 const input = ref<HTMLInputElement | null>(null);
 const text = ref("");
@@ -163,7 +167,18 @@ const keydownHandlers = {
         event.preventDefault();
       }
     }
-  }
+  },
+
+  "Enter": (event: KeyboardEvent) => {
+    if (noModifiers(event)) {
+      const focusedResult = document.querySelector(".search-result:focus");
+
+      if (focusedResult !== null) {
+        focusedResult.firstElementChild.click();
+        event.preventDefault();
+      }
+    }
+  },
 };
 
 function onKeydown(event: KeyboardEvent) {

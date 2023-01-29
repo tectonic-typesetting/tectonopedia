@@ -22,7 +22,7 @@
       </div>
     </div>
 
-    <ModalManager ref="modalManager"></ModalManager>
+    <ModalManager ref="modalManager" :relTop="relTop"></ModalManager>
   </div>
 
 </template>
@@ -39,6 +39,7 @@ const props = defineProps({
   content: { type: String, required: true },
   title: { type: String, required: true },
   bookName: { type: String, required: true },
+  relTop: { type: String, required: true },
 });
 
 const modalManager = ref();

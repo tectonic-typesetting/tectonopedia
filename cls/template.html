@@ -11,10 +11,18 @@
 
 <body>
   <div id="app">
-    <!-- The Vue app will parse and rebuild this content inside its VDOM: -->
-    <h1 id="title">{{ pediaTitle }}</h1>
-    <h2 id="bookname">{{ pediaBookName }}</h2>
-    <main id="content">{{ tduxContent | safe }}</main>
+    <!-- The Vue app will parse and rebuild this content inside its VDOM. We
+    wrap it in a display:none here so that we don't get a flash of this
+    incompletely styled content before Vue loads up. -->
+    <div style="display: none;">
+      <h1 id="title">{{ pediaTitle }}</h1>
+      <h2 id="bookname">{{ pediaBookName }}</h2>
+      <main id="content">{{ tduxContent | safe }}</main>
+      <div id="metadata" data-reltop="{{ tduxRelTop }}"></div>
+    </div>
+    <noscript>
+      JavaScript is required to run the Tectonopedia app.
+    </noscript>
   </div>
 
   <script src="{{ tduxRelTop }}../web/index.ts" type="module"></script>

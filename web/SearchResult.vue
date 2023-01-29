@@ -1,11 +1,24 @@
 <template>
-  <div>
+  <a :href="url">
     <h1 v-text="title"></h1>
     <p v-text="snippet"></p>
-  </div>
+  </a>
 </template>
 
 <style lang="scss" scoped>
+a {
+  color: var(--fg);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--fg);
+  }
+
+  &:visited {
+    color: var(--fg);
+  }
+}
+
 h1 {
   margin: 0.1rem 0;
   font-size: 100%;

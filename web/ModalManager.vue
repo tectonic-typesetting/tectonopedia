@@ -37,7 +37,7 @@
 
       <!-- The "search" model provides access to the search UI. -->
       <div v-show="active == ModalKind.Search" class="modal-container page-wrapper">
-        <SearchModal ref="search"></SearchModal>
+        <SearchModal ref="search" :relTop="relTop"></SearchModal>
       </div>
     </div>
   </div>
@@ -157,6 +157,10 @@ import { ModalKind } from "./base";
 import DispatchModal from "./DispatchModal.vue";
 import HelpModal from "./HelpModal.vue";
 import SearchModal from "./SearchModal.vue";
+
+defineProps({
+  relTop: { type: String, required: true },
+});
 
 const active = ref(ModalKind.None);
 const search = ref();

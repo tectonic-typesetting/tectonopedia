@@ -28,7 +28,10 @@ const title = document.getElementById("title").innerText;
 const bookName = document.getElementById("bookname").innerText;
 const content = document.getElementById("content").innerHTML;
 
-const app = createApp(App, { content, title, bookName });
+const metadata_el = document.getElementById("metadata");
+const relTop = metadata_el.dataset.reltop;
+
+const app = createApp(App, { content, title, bookName, relTop });
 app.component("ResizeObserver", ResizeObserver);
 app.component("FontAwesomeIcon", FontAwesomeIcon);
 app.mount("#app");
