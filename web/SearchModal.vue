@@ -54,9 +54,9 @@ const results = ref<IndexDoc[]>([]);
 const searchResultsList = ref<HTMLElement | null>(null);
 
 type IndexDoc = {
-  relpath: String,
-  title: String,
-  content: String,
+  relpath: string,
+  title: string,
+  content: string,
 };
 
 // This construct gives us the URL of the search index data, which we'll load on
@@ -135,7 +135,7 @@ const keydownHandlers = {
         const results = searchResultsList.value?.children;
 
         if (results.length > 0) {
-          results[0].focus();
+          (results[0] as HTMLElement).focus();
           event.preventDefault();
         }
 
@@ -145,7 +145,7 @@ const keydownHandlers = {
       // Otherwise, if a result is focused, navigate to the next one, if it exists.
       const focusedResult = document.querySelector(".search-result:focus");
       if (focusedResult?.nextElementSibling !== null) {
-        focusedResult.nextElementSibling.focus();
+        (focusedResult.nextElementSibling as HTMLElement).focus();
         event.preventDefault();
       }
     }
@@ -161,7 +161,7 @@ const keydownHandlers = {
           input.value?.focus();
         } else {
           // Otherwise, we have a previous result to go to.
-          focusedResult.previousElementSibling.focus();
+          (focusedResult.previousElementSibling as HTMLElement).focus();
         }
 
         event.preventDefault();
@@ -174,7 +174,7 @@ const keydownHandlers = {
       const focusedResult = document.querySelector(".search-result:focus");
 
       if (focusedResult !== null) {
-        focusedResult.firstElementChild.click();
+        (focusedResult.firstElementChild as HTMLElement).click();
         event.preventDefault();
       }
     }
