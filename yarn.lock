@@ -2359,10 +2359,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"elasticlunrjs@npm:1.0.0":
-  version: 1.0.0
-  resolution: "elasticlunrjs@npm:1.0.0"
-  checksum: 9df551775b96c4502608ae98304479c80c085b265ec1ffb3030cb9e9652335859a1899db86214129b23f5a2849ab1b7e8c1a379cff9f2b193a199192ac477330
+"elasticlunrjs@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "elasticlunrjs@npm:1.0.1"
+  checksum: e7be494ed6b1cfaa18c3f0bcd5efe56084c54ff622ebeb3850fc1c108e1efe2d2762da3a3f4a9dc7cf6818a19af52fae64102df104b98e4258c7cb594806daa3
   languageName: node
   linkType: hard
 
@@ -5219,7 +5219,7 @@ __metadata:
     "@parcel/transformer-vue": ^2.8
     "@types/elasticlunrjs": 1.0.0
     "@types/node": ^18.11.18
-    elasticlunrjs: 1.0.0
+    elasticlunrjs: ^1.0.1
     gulp: ^4.0.2
     gulp-format-html: ^1.2.7
     gulp-html: ^5.0.0

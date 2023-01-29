@@ -13,7 +13,7 @@
     "@parcel/transformer-vue": "^2.8",
     "@types/elasticlunrjs": "1.0.0",
     "@types/node": "^18.11.18",
-    "elasticlunrjs": "1.0.0",
+    "elasticlunrjs": "^1.0.1",
     "gulp": "^4.0.2",
     "gulp-format-html": "^1.2.7",
     "gulp-html": "^5.0.0",
