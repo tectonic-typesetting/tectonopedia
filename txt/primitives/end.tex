@@ -1,6 +1,30 @@
 \entry{end}{\string\end\ (\TeX\ primitive)}{\end (TeX primitive)}
 
-Not to be confused with LaTeX's \string\end!
+\i{Not to be confused with LaTeX's \string\end\ command.}
 
-You could see also \e{message}, but it also doesn't have much to do with this
+The \TeX\ primitive \tex`\end` finishes processing of the document.
+
+In \LaTeX, the \tex`\end` control sequence is redefined to be a command that
+closes the current environment. The \tex`\end{document}` version of this command
+is similar in spirit to the primitive, causing \LaTeX\ to wrap up processing of
+the document. This process finishes by invoking the \tex`\end` primitive, which
+is directly accessible in \LaTeX\ through the control sequence \tex`\@@end`.
+There should almost never be a reason to invoke it directly in user code,
+however.
+
+When the \tex`\end` primitive is invoked, processing only terminates if the main
+vertical list is empty and the \tex`\deadcycles` parameter is zero. If this is
+not the case, the engine inserts content equivalent to %
+\tex`\line{} \vfill \penalty-'10000000000` into the main vertical list and then
+prepares to reread the \tex`\end` token again. This causes the output routine to
+be invoked and should eventually cause the main vertical list to be completely
+emptied. However, it is possible to construct an output routine that will never
+allow the criteria above to be met, meaning that document processing will never
+exit.
+
+\section*{See Also}
+
+\begin{itemize}
+\item You could see also \e{message}, but it also doesn't have much to do with this
 command.
+\end{itemize}

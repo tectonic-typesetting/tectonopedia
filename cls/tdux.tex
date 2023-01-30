@@ -53,8 +53,8 @@
 }
 %
 % Set up paragraph tagging
-\AddToHook{para/begin}{\special{tdux:mfs div^^JCtdux-p}}
-\AddToHook{para/end}{\special{tdux:me div}}
+\AddToHook{para/begin}{\special{tdux:asp}}
+\AddToHook{para/end}{\special{tdux:aep}}
 %
 \AtBeginDocument{%
   \pagestyle{empty}

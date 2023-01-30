@@ -41,6 +41,7 @@
 \RequirePackage{unicode-math}
 \setmathfont{texgyrepagella-math.otf}
 %
+\RequirePackage{fancyvrb}
 \RequirePackage{hyperref}
 %
 % Get the generic TDUX macros
@@ -121,6 +122,8 @@
 %
 \let\justTeX=\TeX
 \def\TeX{\special{tdux:cs math}\justTeX\special{tdux:ce math}}
+\let\justLaTeX=\LaTeX
+\def\LaTeX{\special{tdux:cs math}\justLaTeX\special{tdux:ce math}}
 %
 % \href{URL}{TEXT}
 %  This builds in a `target="_blank"` setting.
@@ -226,3 +229,91 @@ Dhref #1}#2\special{tdux:me a}%
 \newcommand{\pediaTitle}[1]{%
   {\Large\textbf{\special{tdux:mfs div^^JCpedia-pagetitle}#1\special{tdux:me div}}}%
 }
+%
+% \b is an alias for \textbf
+\let\b=\textbf
+%
+% \i is an alias for \emph
+\let\i=\emph
+%
+% \tex renders inline TeX code processed in a "verbatim"
+%   mode. Right now it's just an alias for the fancyvrb
+%   \Verb command, but we want a separate command that
+%   specifically indicates that its contents are TeX
+%   because in the future we might include syntax
+%   highlighting, hyperlinking, etc.
+\let\tex=\Verb
+%
+% Redefining sectioning commands to emit <h{1,2,3,4}> tags in the HTML. TODO:
+% there is probably a better way to do this.
+%
+\RequirePackage{titlesec}
+% From Section 8.2 of the titlesec docs, the settings here correspond to the
+% standard formats.
+%\titleformat{\chapter}[display]{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{\special{tdux:mfs h1^^JNAT}}[\special{tdux:me h1}]
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{\special{tdux:mfs h2^^JNAT}}[\special{tdux:me h2}]%
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries}{\thesubsubsection}{1em}{\special{tdux:mfs h3^^JNAT}}[\special{tdux:me h3}]%
+%\titleformat{\paragraph}[runin]{\normalfont\normalsize\bfseries}{\theparagraph}{1em}{}
+%\titleformat{\subparagraph}[runin]{\normalfont\normalsize\bfseries}{\thesubparagraph}{1em}{}
+%
+% Futzing with list commands to add HTML tags.
+%
+\RequirePackage{enumitem}
+%
+\makeatletter
+\newif\if@pedia@firstlistitem
+\let\pedia@parAlias=\par % not sure why we need this, but here we are.
+%
+\setlist[itemize]{%
+  label={},
+  before*={%
+    \let\pedia@save@item=\item
+    \@pedia@firstlistitemtrue
+    \def\item{%
+      \if@pedia@firstlistitem
+        \pedia@save@item
+        \@pedia@firstlistitemfalse
+      \else
+        \pedia@parAlias
+        \special{tdux:me li}%
+        \pedia@save@item
+      \fi
+      \special{tdux:mfs li}%
+    }%
+    \special{tdux:mfs ul}%
+  },
+  after*={%
+    \pedia@parAlias
+    \special{tdux:me li}
+    \special{tdux:me ul}
+    \let\item=\pedia@save@item
+  }%
+}
+%
+\setlist[enumerate]{%
+  label={},
+  before*={%
+    \let\pedia@save@item=\item
+    \@pedia@firstlistitemtrue
+    \def\item{%
+      \if@pedia@firstlistitem
+        \pedia@save@item
+        \@pedia@firstlistitemfalse
+      \else
+        \pedia@parAlias
+        \special{tdux:me li}%
+        \pedia@save@item
+      \fi
+      \special{tdux:mfs li}%
+    }%
+    \special{tdux:mfs ol}%
+  },
+  after*={%
+    \pedia@parAlias
+    \special{tdux:me li}
+    \special{tdux:me ol}
+    \let\item=\pedia@save@item
+  }%
+}
+\makeatother
