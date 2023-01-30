@@ -1,0 +1,41 @@
+\entry{format}{Format}{Format}
+
+A \TeX\ \b{format} is a predefined set of macros and settings that is loaded
+automatically by the engine upon startup, before performing any processing of
+the input document. Different formats generally have well-known names, the most
+famous of which is \LaTeX.
+
+Tectonic can generate formats on-demand. A format named \texttt{EXAMPLE} is
+created by processing an input file named \texttt{tectonic-format-EXAMPLE.tex};
+for instance, the default \LaTeX\ format is set up by processing
+\texttt{tectonic-format-latex.tex}. This input is processed by the engine in
+“initex” mode, which is a special engine mode that finishes by emitting a
+\e{format-file} rather than the usual XDV file.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \e{format-file}
+\item \e{dump}, the command that terminates processing of a format input file
+\end{itemize}
+
+\tduxEmit
+
+
+\entry{format-file}{Format file}{Format file}
+
+A \b{format file} is a binary file encoding a \TeX\ \e{format}.
+
+Each \e{format} is saved into, and loaded from, a format file. In Tectonic,
+format files are automatically generated on demand and saved in the user cache
+directory. The contents of a format file are closely tied to the internal layout
+of the engine's data structures, and format files will generally need to be
+regenerated when the engine version changes. In Tectonic, the engine is
+versioned with a “format serial” number that is incremented every time something
+changes that will require format files to be regenerated.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \e{format}
+\end{itemize}
