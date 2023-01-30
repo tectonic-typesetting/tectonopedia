@@ -280,7 +280,8 @@ Dhref #1}#2\special{tdux:me a}%
         \pedia@save@item
       \fi
       \special{tdux:mfs li}%
-    }%
+      \leavevmode
+      }%
     \special{tdux:mfs ul}%
   },
   after*={%
@@ -306,6 +307,7 @@ Dhref #1}#2\special{tdux:me a}%
         \pedia@save@item
       \fi
       \special{tdux:mfs li}%
+      \leavevmode
     }%
     \special{tdux:mfs ol}%
   },
