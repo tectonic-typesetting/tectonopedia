@@ -332,6 +332,19 @@ impl IndexCollection {
         }
     }
 
+    /// Get a user-friendly(ish) summary of the indexing data.
+    pub fn index_summary(&self) -> String {
+        let n_indices = self.indices.len();
+
+        let mut n_entries = 0;
+
+        for idx in &self.indices {
+            n_entries += idx.entries.len();
+        }
+
+        format!("{n_entries} entries in {n_indices} indices")
+    }
+
     pub fn get_resolved_reference_tex(&self, input: InputId) -> String {
         // Because we have validated cross-references, we can unwrap everything
         // here without worrying about missing values.

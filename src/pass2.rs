@@ -39,6 +39,7 @@ pub struct Pass2Reducer {
     inputs_index_id: IndexId,
     input_id: Option<InputId>,
     entrypoints_file: File,
+    n_outputs: usize,
 }
 
 impl TexReducer for Pass2Reducer {
@@ -86,6 +87,7 @@ impl Pass2Reducer {
             inputs_index_id,
             input_id: None,
             entrypoints_file,
+            n_outputs: 0,
         }
     }
 
@@ -94,6 +96,7 @@ impl Pass2Reducer {
             match Metadatum::parse(&line)? {
                 Metadatum::Output(path) => {
                     writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", path)?;
+                    self.n_outputs += 1;
                 }
 
                 _ => {}
@@ -101,6 +104,10 @@ impl Pass2Reducer {
         }
 
         Ok(())
+    }
+
+    pub fn n_outputs(&self) -> usize {
+        self.n_outputs
     }
 }
 

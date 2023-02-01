@@ -85,11 +85,11 @@ impl BuildArgs {
             ["failed to load user indices"]
         );
 
-        // First pass of indexing and gathering font/asset information.
+        // First TeX pass of indexing and gathering font/asset information.
 
         let mut p1r = pass1::Pass1Reducer::new(indices);
         let ninputs = texworker::reduce_inputs(&mut p1r, status)?;
-        tt_note!(status, "pass 1: complete - processed {} inputs", ninputs);
+        tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
         let (assets, indices) = p1r.unpack();
 
         // Resolve cross-references and validate.
@@ -98,8 +98,9 @@ impl BuildArgs {
             indices.validate_references();
             ["failed to validate cross-references"]
         );
+        tt_note!(status, "validated indices - {}", indices.index_summary());
 
-        // Pass 2, emitting
+        // TeX pass 2, emitting
 
         let mut entrypoints_file = atry!(
             File::create("build/_all.html");
@@ -116,7 +117,8 @@ impl BuildArgs {
 
         let mut p2r = pass2::Pass2Reducer::new(assets, indices, entrypoints_file);
         texworker::reduce_inputs(&mut p2r, status)?;
-        tt_note!(status, "pass 2: complete");
+        let n_outputs = p2r.n_outputs();
+        tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
 
         tt_note!(
             status,
