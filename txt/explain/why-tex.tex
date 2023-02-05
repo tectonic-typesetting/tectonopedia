@@ -1,0 +1,90 @@
+\explainer{why-tex}{Why \TeX?}{Why TeX?}
+
+Technology has come a long way since the 1970's. Why is Tectonic encouraging
+people to create documents using the venerable \TeX\ language, which was
+designed at a time when computers — and computing — were so different than they
+are today?
+
+First things first: we'll happily admit that there are plenty of circumstances
+where \TeX\ and Tectonic are \i{not} the best solutions, and you'll be better off
+using some other kind of technology — whether that's
+\href{https://en.wikipedia.org/wiki/Markdown}{Markdown},
+\href{https://www.microsoft.com/en-us/microsoft-365/word}{Microsoft Word}, pen
+and paper, or whatever else. The very notion of “creating documents” is so broad
+that it should go without saying that no single system is going to be the best
+choice for every situation.
+
+That being said, Tectonic is inspired by the belief that despite its age \TeX\
+is still the very best tool in the world for solving certain kinds of problems.
+For instance, if you know one thing about \TeX, it's probably that it's good for
+mathematics. And that reputation is well-earned! A proficient \TeX\ user can
+easily write a single line of code to conjure up this equation:
+\[
+\int\limits_{-\infty}^{\infty} \text{d}x \, e^{-x^{2}} = \sqrt{\pi}.
+\]
+What should actually impress you more, however, are equations typeset inline
+with body text, like $y = x^2$. Readability requires that the placement, sizing,
+and appearance of the math and text symbols all agree well, issues that can be
+fudged a bit in “display” equations like the one above. Here too, \TeX\ is
+best-in-class.
+
+But we wouldn't be writing all this verbiage if \TeX\ just had a nice math
+layout algorithm. \i{Why} is \TeX\ so much better at typesetting math than other
+systems? We claim that the crux of the matter is that written mathematics is an
+open-ended visual language: it admits infinitely varied forms in unique,
+unpredictable combinations. \TeX\ can handle math well not because it got some
+specific fiddly bits right — although it did — but because \i{\TeX\ is itself an
+expressive, open-ended language} capable of producing forms that weren't
+anticipated when it was designed.
+
+If we interpret the title of this article to be asking the question \i{why not
+just use Markdown?}, this is our answer. We can think of \TeX\ as a \i{document
+language} that is fundamentally more powerful than fixed grammars like Markdown.
+(We're being handwavey with terminology here, but for what it's worth, the \TeX\
+language is
+\href{https://en.wikipedia.org/wiki/Turing_completeness}{Turing-complete}.)
+Tools like Markdown may provide grammars for creating documents, but they don't
+allow you to establish new grammars of your own. This is far from the only
+reason that \TeX\ is good at what it does, but it's the most essential one.
+
+Now, anyone with a healthy skepticism of abstraction is likely to respond: \i{I
+don't want some elaborate system that says it can do everything — I just want
+something to get the job done}. This is the right response! Human lifetimes have
+been wasted on the refinement of elegant but useless ideas, and we have
+deadlines to meet. But hopefully that you'll agree that sometimes a system of
+abstraction is exactly what you need to get the job done: try doing physics
+without calculus.
+
+If that's the case, the question is really about what kind of balance can be
+struck: between power and simplicity, flexibility and ease. This relates to the
+narrower issue of why Tectonic specifically promotes \TeX\ and not some
+hypothetical \i{other} language for creating documents. The claim that we make,
+but can't possibly prove, is that \TeX\ strikes this balance amazingly well.
+When you just need to ``get the job done,'' it can get out of your way. But if
+you need to create a new abstraction, it can do that too.
+
+A great example of this is the
+\href{https://en.wikipedia.org/wiki/BibTeX}{Bib\TeX} system for dealing with
+bibliographic references in \TeX\ documents. Although the core \TeX\ language
+doesn't know anything about bibliographic references, it's flexible enough that
+Bib\TeX\ is able to extend it with new commands to support them. And that
+support doesn't feel like an awkward extension: the new commands integrate
+straightforwardly with the rest of the language and are intuitive for users,
+even ones who don't care about how Bib\TeX\ works under the hood. Most people
+who have gotten the hang of Bib\TeX\ would probably \i{hate} the idea of giving
+it up and going back to managing their references manually.
+
+There are other reasons to embrace \TeX. It may be old, but by the same token it
+is \i{battle-tested} and amazingly reliable. It is \i{fast} and ingeniously
+efficient. And it is \i{supported} by a worldwide community of users, who have
+gone to incredible lengths to modernize it and develop a dizzying array of
+extension packages. A lot of very smart people have put a lot of effort into
+this language, which is still going strong after forty years — and those facts
+tell you something important.
+
+That is not to imply that today's \TeX\ is perfect — far from it. The error
+messages are famously hard to understand. Its documentation is, ironically, a
+mess. Indeed, a major premise of the Tectonic project is that some aspects of
+the \TeX\ ecosystem are in need of dramatic change. But not all of them.
+Tectonic is founded on the idea that \TeX\ \i{can be} the document language that
+the 21st century deserves.
