@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <ModalManager ref="modalManager" :relTop="relTop"></ModalManager>
+    <ToolManager ref="toolManager" :relTop="relTop"></ToolManager>
   </div>
 
 </template>
@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import ModalManager from "./ModalManager.vue";
+import ToolManager from "./ToolManager.vue";
 
 const props = defineProps({
   content: { type: String, required: true },
@@ -46,12 +46,12 @@ const props = defineProps({
 });
 
 const menuBar = ref();
-const modalManager = ref();
+const toolManager = ref();
 
 // Local event handlers
 
 function onDispatchClicked() {
-  modalManager.value?.toggleDispatch();
+  toolManager.value?.toggleDispatch();
 }
 
 // Global keybindings
@@ -65,21 +65,21 @@ const keydownHandlers = {
   "/": (event: KeyboardEvent) => {
     if (noModifiers(event)) {
       event.preventDefault();
-      modalManager.value?.toggleSearch();
+      toolManager.value?.toggleSearch();
     }
   },
 
   "?": (event: KeyboardEvent) => {
     if (noModifiers(event)) {
       event.preventDefault();
-      modalManager.value?.toggleHelp();
+      toolManager.value?.toggleHelp();
     }
   },
 
   Escape: (event: KeyboardEvent) => {
     if (noModifiers(event)) {
       event.preventDefault();
-      modalManager.value?.clear();
+      toolManager.value?.clear();
     }
   },
 };

@@ -48,17 +48,17 @@
 </style>
 
 <script setup lang="ts">
-import { ModalKind } from "./base";
+import { ToolKind } from "./base";
 
 const emit = defineEmits<{
-  (e: "doModal", kind: ModalKind): void;
+  (e: "doTool", kind: ToolKind): void;
 }>();
 
 function onBack() {
-  emit("doModal", ModalKind.None);
+  emit("doTool", ToolKind.None);
 }
 
 function onHelp() {
-  emit("doModal", ModalKind.Help);
+  emit("doTool", ToolKind.Help);
 }
 </script>

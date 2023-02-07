@@ -1,4 +1,4 @@
-export enum ModalKind {
+export enum ToolKind {
   None,
   Dispatch,
   Help,
