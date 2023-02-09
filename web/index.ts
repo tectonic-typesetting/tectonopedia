@@ -6,11 +6,13 @@ import App from "./App.vue";
 
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { faAngleLeft, faAngleRight, faBars } from "@fortawesome/free-solid-svg-icons";
+import { faAngleLeft, faAngleRight, faBars, faLifeRing, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
 
 library.add(faAngleLeft);
 library.add(faAngleRight);
 library.add(faBars);
+library.add(faLifeRing);
+library.add(faMagnifyingGlass);
 
 // We want our HTML outputs to contain their actual content so that our content
 // can be served with a simple static webserve and so that search engines can

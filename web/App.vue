@@ -1,5 +1,7 @@
 <template>
   <div>
+    <ToolManager ref="toolManager" :relTop="relTop"></ToolManager>
+
     <div class="page-wrapper">
       <div class="page">
         <!-- This element hangs out at the top of the window invisibly, so that we can
@@ -24,8 +26,6 @@
         </div>
       </div>
     </div>
-
-    <ToolManager ref="toolManager" :relTop="relTop"></ToolManager>
   </div>
 
 </template>

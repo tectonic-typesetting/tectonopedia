@@ -2,16 +2,20 @@
   <div class="content-aligned">
     <ul class="actions">
       <li>
-        <button class="icon-button" type="button" @click="onBack">
-          <FontAwesomeIcon icon="fa-solid fa-bars" /> Back to text
+        <button class="icon-button" type="button" @click="onSearch">
+          <FontAwesomeIcon icon="fa-solid fa-magnifying-glass" size="xl" fixedWidth="true" /> Search
+        </button>
+      </li>
+      <li>
+        <button class="icon-button" type="button" @click="onHelp">
+          <FontAwesomeIcon icon="fa-solid fa-life-ring" size="xl" fixedWidth="true" /> Help
         </button>
       </li>
     </ul>
-
     <ul class="actions">
       <li>
-        <button class="icon-button" type="button" @click="onHelp">
-          <FontAwesomeIcon icon="fa-solid fa-bars" /> Help
+        <button class="icon-button" type="button" @click="onClose">
+          <FontAwesomeIcon icon="fa-solid fa-bars" size="xl" fixedWidth="true" /> Close toolbox
         </button>
       </li>
     </ul>
@@ -22,17 +26,23 @@
 .actions {
   width: 100%;
   padding: 0;
-  margin-top: 2rem;
+  margin-top: 1rem;
+  box-sizing: border-box;
 
   li {
     width: 100%;
     margin: 2px 0;
-    border: 1px solid var(--searchbar-border-color);
-    border-radius: 3px;
     padding: 2px 6px;
     box-sizing: border-box;
 
     display: block;
+    border: 1px solid rgba(0, 0, 0, 0);
+    border-radius: 3px;
+
+    &:hover {
+      border: 1px solid var(--searchbar-border-color);
+      border-radius: 3px;
+    }
 
     button {
       width: 100%;
@@ -41,6 +51,10 @@
 
       &:hover {
         cursor: pointer;
+      }
+
+      :first-child {
+        margin-right: 5px;
       }
     }
   }
@@ -54,11 +68,15 @@ const emit = defineEmits<{
   (e: "doTool", kind: ToolKind): void;
 }>();
 
-function onBack() {
+function onClose() {
   emit("doTool", ToolKind.None);
 }
 
 function onHelp() {
   emit("doTool", ToolKind.Help);
+}
+
+function onSearch() {
+  emit("doTool", ToolKind.Search);
 }
 </script>

@@ -4,11 +4,15 @@
   --page-padding: 15px;
   --content-max-width: 750px;
   --menu-bar-height: 50px;
+  --sidebar-width: 300px;
 
   /* mdbook "light" theme */
 
   --bg: hsl(0, 0%, 100%);
   --fg: hsl(0, 0%, 0%);
+
+  --sidebar-bg: #fafafa;
+  --sidebar-fg: hsl(0, 0%, 0%);
 
   --scrollbar: #8F8F8F;
 
@@ -152,6 +156,17 @@ h6:target::before {
 
 .page-wrapper {
   box-sizing: border-box;
+
+  // Nice transition for the sidebar if we're in desktop mode
+  transition: margin-left 0.3s ease;
+}
+
+@media only screen and (min-width: 768px) {
+  .tools-visible .page-wrapper {
+    // If we're in desktop mode and the tools are visible as a sidebar, we make
+    // space for the sidebar by just giving the main page a huge left margin.
+    margin-left: var(--sidebar-width);
+  }
 }
 
 // spx2html must actually use <div>s for paragraphs, not <p> elements; they are

@@ -9,7 +9,7 @@
         <span class="d"><span>Show/hide search</span></span><span class="k">/</span>
       </li>
       <li>
-        <span class="d"><span>Close any overlay</span></span><span class="k">Esc</span>
+        <span class="d"><span>Close tool</span></span><span class="k">Esc</span>
       </li>
     </ul>
   </div>
