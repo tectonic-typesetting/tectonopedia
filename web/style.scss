@@ -61,6 +61,12 @@ body {
   overflow-x: hidden;
 }
 
+button {
+  // Buttons are styled like the user-agent platform by default; we don't want
+  // that
+  font-family: "tduxSans";
+}
+
 /* Code styling */
 
 code {
@@ -379,13 +385,13 @@ html {
 }
 
 .left-buttons {
-  flex: 1 0 30px;
+  flex: 1 1 100px;
   margin: 0 5px;
   display: flex;
 }
 
 .right-buttons {
-  flex: 1 0 30px;
+  flex: 1 1 100px;
   margin: 0 15px;
   display: flex;
   flex-direction: row-reverse;
@@ -403,7 +409,7 @@ html {
   line-height: var(--menu-bar-height);
   text-align: center;
   margin: 0;
-  flex: 1;
+  flex: 10;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
