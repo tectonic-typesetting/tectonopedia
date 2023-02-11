@@ -25,62 +25,72 @@ easily write a single line of code to conjure up this equation:
 What should actually impress you more, however, are equations typeset inline
 with body text, like $y = x^2$. Readability requires that the placement, sizing,
 and appearance of the math and text symbols all agree well, issues that can be
-fudged a bit in “display” equations like the one above. Here too, \TeX\ is
-best-in-class.
+fudged a bit in “display” equations like the one above. \TeX\ is one of the few
+tools out there that can get all these things just right.
 
-But we wouldn't be writing all this verbiage if \TeX\ just had a nice math
-layout algorithm. \i{Why} is \TeX\ so much better at typesetting math than other
-systems? We claim that the crux of the matter is that written mathematics is an
-open-ended visual language: it admits infinitely varied forms in unique,
-unpredictable combinations. \TeX\ can handle math well not because it got some
-specific fiddly bits right — although it did — but because \i{\TeX\ is itself an
-expressive, open-ended language} capable of producing forms that weren't
-anticipated when it was designed.
-
-If we interpret the title of this article to be asking the question \i{why not
-just use Markdown?}, this is our answer. We can think of \TeX\ as a \i{document
-language} that is fundamentally more powerful than fixed grammars like Markdown.
-(We're being handwavey with terminology here, but for what it's worth, the \TeX\
+But we wouldn't be writing all this verbiage in honor of a finicky math layout
+algorithm. Why can't other tools just copy \TeX's algorithms and do math equally
+well? We claim that the real challenge of typesetting mathematics is that
+written math is an open-ended visual language, admitting infinitely varied forms
+in unique, unpredictable combinations. \TeX\ can handle math well not because it
+got some specific fiddly bits right — although it did — but because \i{\TeX\ is
+itself an expressive, open-ended language}. Other tools give you building
+blocks; only \TeX\ gives you the machinery to create and use new blocks of your
+own. (This is not an equivalent statement, but for what it’s worth, the \TeX\
 language is
-\href{https://en.wikipedia.org/wiki/Turing_completeness}{Turing-complete}.)
-Tools like Markdown may provide grammars for creating documents, but they don't
-allow you to establish new grammars of your own. This is far from the only
-reason that \TeX\ is good at what it does, but it's the most essential one.
+\href{https://en.wikipedia.org/wiki/Turing_completeness}{Turing-complete}.) And
+your own “blocks” can be just as easy and natural to use as the built-in ones.
+This is far from the only reason that \TeX\ is good at what it does, but it's
+the most essential one.
 
-Now, anyone with a healthy skepticism of abstraction is likely to respond: \i{I
-don't want some elaborate system that says it can do everything — I just want
-something to get the job done}. This is the right response! Human lifetimes have
-been wasted on the refinement of elegant but useless ideas, and we have
-deadlines to meet. But hopefully that you'll agree that sometimes a system of
-abstraction is exactly what you need to get the job done: try doing physics
-without calculus.
+The power of \TeX\ manifests itself not only in low-level ways, such as math
+typesetting, but in higher-level ones as well. For instance, scholarly documents
+have detailed conventions for handling bibliographic references. Although
+neither the core \TeX\ language nor Microsoft Word have any built-in, structured
+way to represent reference metadata, \TeX\ has been extended to support them in
+the \href{https://en.wikipedia.org/wiki/BibTeX}{Bib\TeX} framework. Bib\TeX's
+new commands don't feel like awkward extensions: they integrate
+straightforwardly with the rest of the language and are intuitive for users.
+While it's true that you can manually typeset your references in Word and
+assemble them into a bibliography, it's fair to say Bib\TeX\ provides a
+fundamentally more powerful way to work with them: we’ll wager that most people
+who have gotten the hang of Bib\TeX\ would \i{hate} the idea of giving it up and
+going back to managing their references manually.
 
-If that's the case, the question is really about what kind of balance can be
-struck: between power and simplicity, flexibility and ease. This relates to the
-narrower issue of why Tectonic specifically promotes \TeX\ and not some
-hypothetical \i{other} language for creating documents. The claim that we make,
-but can't possibly prove, is that \TeX\ strikes this balance amazingly well.
-When you just need to ``get the job done,'' it can get out of your way. But if
-you need to create a new abstraction, it can do that too.
+Now, if you’re a healthy skeptic of abstraction, you'll likely respond: \i{whoa,
+I don't want some elaborate system that can do anything — I just want a tool
+that helps me get the job done}. This is the right response! Human lifetimes
+have been wasted on the refinement of elegant but useless ideas, and we have
+deadlines to meet. But hopefully that you'll agree that in some situations, a
+system of abstraction is exactly what you need to get the job done. Try doing
+physics without calculus.
 
-A great example of this is the
-\href{https://en.wikipedia.org/wiki/BibTeX}{Bib\TeX} system for dealing with
-bibliographic references in \TeX\ documents. Although the core \TeX\ language
-doesn't know anything about bibliographic references, it's flexible enough that
-Bib\TeX\ is able to extend it with new commands to support them. And that
-support doesn't feel like an awkward extension: the new commands integrate
-straightforwardly with the rest of the language and are intuitive for users,
-even ones who don't care about how Bib\TeX\ works under the hood. Most people
-who have gotten the hang of Bib\TeX\ would probably \i{hate} the idea of giving
-it up and going back to managing their references manually.
+We'll assert, but can't possibly prove, that \i{once you stop accepting the
+limitations that less powerful tools impose on you, you'll start seeing
+opportunities to use \TeX's capabilities everywhere}. Many kinds of documents
+have a sort of “internal logic” that becomes easier to express given the right
+tools. That being said, the ones where \TeX's capabilities generally add the
+most are ones where this internal logic is easy to find: documents with lots of
+cross-references, figures, tables, equations, or code — what the Tectonic
+community calls \i{technical documents}. And it is likely no coincidence that
+these are the sorts of documents that \TeX\ has historically most often been
+used to create.
+
+Further, we’ll boldly claim that despite its internal sophistication, \TeX\ is
+\i{easy to start using}. We can't deny that \TeX\ has a reputation for confusing
+output and sometimes inexplicable behavior, or that there are reasons that this
+reputation is deserved. Nevertheless, we'll point out that many mathematicians
+and scientists who do not care \i{at all} about its guts successfully use it for
+everyday work, even if it drives them off the wall at times. You can think of it
+as being a bit like \href{https://git-scm.com/}{git} in this way.
 
 There are other reasons to embrace \TeX. It may be old, but by the same token it
 is \i{battle-tested} and amazingly reliable. It is \i{fast} and ingeniously
-efficient. And it is \i{supported} by a worldwide community of users, who have
-gone to incredible lengths to modernize it and develop a dizzying array of
-extension packages. A lot of very smart people have put a lot of effort into
-this language, which is still going strong after forty years — and those facts
-tell you something important.
+efficient. It is \i{supported} by a worldwide community of users, who have gone
+to incredible lengths to modernize it and develop a dizzying array of extension
+packages. A lot of very smart people have put a lot of effort into this
+language, which is still going strong after forty years — and those facts tell
+you something important.
 
 That is not to imply that today's \TeX\ is perfect — far from it. The error
 messages are famously hard to understand. Its documentation is, ironically, a
@@ -88,3 +98,9 @@ mess. Indeed, a major premise of the Tectonic project is that some aspects of
 the \TeX\ ecosystem are in need of dramatic change. But not all of them.
 Tectonic is founded on the idea that \TeX\ \i{can be} the document language that
 the 21st century deserves.
+
+\section*{See Also}
+
+\begin{itemize}
+  \item \pediaLinkRef{explainers}{what-is-tex}
+\end{itemize}
