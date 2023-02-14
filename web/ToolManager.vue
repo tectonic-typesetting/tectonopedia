@@ -270,8 +270,6 @@ function onDoTool(kind: ToolKind) {
 // special CSS classes.
 onMounted(() => {
   // Keep this synced with the CSS above
-  console.log("OM", window.matchMedia("only screen and (min-width: 768px)").matches);
-
   if (window.matchMedia("only screen and (min-width: 768px)").matches) {
     active.value = ToolKind.Dispatch;
   }
