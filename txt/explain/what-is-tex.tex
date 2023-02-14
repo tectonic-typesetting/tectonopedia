@@ -1,0 +1,109 @@
+\explainer{what-is-tex}{What is \TeX?}{What is TeX?}
+
+The Tectonic project is founded on a technology called \TeX. What is \TeX, and
+why does it matter?
+
+The best way we can put it is that \i{\TeX\ is a programming language for
+creating documents}. \TeX\ doesn't look like most programming languages, because
+most of the time you're just typing the words that you want to appear. But when
+you want to put some text \i{in italics}, or conjure up an equation like $f(x) =
+x^3 - \beta$, or start a new chapter in your book, there are special \TeX\
+commands to type that cause those things to happen. You don’t see this
+terminology too often anymore, but \TeX\ is the antithesis of a “WYSIWYG” —
+“what you see is what you get” — tool like
+\href{https://www.microsoft.com/en-us/microsoft-365/word}{Microsoft Word}.
+
+This article is \i{not}, however, going to introduce any specifics of the \TeX\
+programming language. Instead, it aims present some of the most important
+\i{non-technical} aspects of \TeX. \TeX\ is arguably a unique piece of
+technology in the landscape of 21st-century computing, and we hope that
+familiarity with some of its backgroundkx will help you better understand the
+distinctive characteristics of Tectonic and other \TeX-based software.
+
+It would be very reasonable to start by asking, \i{why the heck would I want to
+use a programming language to write a report anyway?} A programming language
+sounds like it could be \i{powerful}, but that's not a word that necessarily
+comes to mind in relation to writing tools. And, indeed, there are plenty of
+jobs that can be done just as well with a tool like
+\href{https://en.wikipedia.org/wiki/Markdown}{Markdown} instead of \TeX.
+
+Some kinds of documents really do benefit from power, though. In particular,
+tools like Markdown give you a fixed set of building blocks to use: a heading
+here, a bulleted list there. If the document you want to create uses only those
+building blocks, great. The unique power of \TeX\ is that it allows you to
+create and use \i{new} building blocks as you need them. This flexibility is
+really important for typesetting mathematics, which is probably \TeX's most
+famous strength, but it applies in all kinds of situations.
+
+And we'll further claim that \i{once you stop accepting the limitations that
+less powerful tools impose on you, you'll start seeing opportunities to use
+\TeX's capabilities everywhere}. That being said, most people do find that \TeX\
+makes the biggest difference for \i{technical documents}: the sorts of works
+that contain math, figures, tables, code, or lots of cross-references. \TeX\ is
+primarily intended for these use cases.
+
+XXX \TeX\ has a lot of history behind it. The first version of \TeX\ was created
+by legendary computer scientist
+\href{https://en.wikipedia.org/wiki/Donald_Knuth}{Donald E.\ Knuth} and released
+all the way back in 1978. Knuth had been disappointed by the quality of the
+typesetting of one of his books and, after seeing some examples of what
+modern-circa-1977 digital printing systems could produce, decided that he could
+write a computer program that would help him meet a higher standard. The
+software that he created was a remarkable, visionary achievement. It certainly
+succeeded in its core aim: \TeX\ set a new standard in terms of the sheer
+quality of its typesetting outputs. In order to achieve this result, Knuth
+created the first high-quality digital fonts and developed pioneering new
+algorithms for laying out mathematics, breaking paragraphs into lines, and
+automatically hyphenating words (which is needed to produce acceptable
+fully-justified text). \TeX\ was \i{also} famous for the quality of its
+engineering: it was efficient, reliable, ultra-precise in its output, and as
+close to bug-free as software can get. Finally, Knuth made \TeX\ freely
+available, with its implementation open for inspection and customization.
+
+To frame it another way: there are very few pieces of software that were
+developed before 1980 that are still in everyday use. \TeX\ is one of them.
+
+Now is as good a time as any to mention that the name “\TeX” is pronounced
+“teck”. It's meant to evoke the Greek root of the word “technology”, with the
+“X” representing the Greek letter chi, χ. (This might seem like a bit of an odd
+choice since one of \TeX's exciting capabilities was that it could actually
+display Greek letters, which are routinely needed in equations!) The preferred
+way to write the name of the software involves the lowered (“kerned”) “E”, which
+is another thing that few systems at the time could do. In situations where you
+can't control kerning, the usual way to write the name of the software is “TeX”.
+
+Anyway. In modern contexts, the word “\TeX” might be used to refer to one of a
+variety of related things. \TeX, a programming language, is processed by \TeX, a
+specific computer program. In practice, modern users almost always use extended
+variants of the \TeX\ program, such as \texttt{pdftex}, \texttt{luatex},
+\texttt{xetex}, or Tectonic, which add new features to Knuth's \TeX\ language
+such as support for Unicode. Although Knuth has firmly established that he
+wishes for the name “\TeX” to be reserved for implementations that are precisely
+compatible with the system that he has developed, people will sometimes use the
+word “\TeX” to refer to this broader family when the intent is clear, as these
+related programs have much more in common than they differ. This documentation
+follows that pattern, sometimes using the term “Knuth \TeX” to refer
+emphatically to the non-extended version of the language.
+
+People will also use the word “\TeX” to refer to the broader ecosystem of
+software needed to create finished documents using the \TeX\ language —
+nowadays, doing this requires a whole suite of programs and data that all work
+together, with the core \TeX\ “engine” being only one of those pieces. For
+instance, the majority of modern \TeX\ documents are written using the \LaTeX\
+system. \LaTeX\ extends the baseline \TeX\ language with higher-level constructs
+amounting to tens of thousands of lines of code, and can itself be extended with
+\i{thousands} of add-on packages. Once again, when the context is clear, the
+term “\TeX” is often used as
+\href{https://en.wikipedia.org/wiki/Synecdoche}{synecdoche} for this broader
+ecosystem.
+
+In the context of Tectonic, there are therefore a few basic principles to keep
+in mind:
+\begin{itemize}
+\item Tectonic implements \i{a form of} the \TeX\ language, one that we refer to
+  as “Tectonic \TeX”. This is very similar to, but not always fully compatible
+  with, the forms of \TeX\ implemented by other engines such as \texttt{luatex}.
+\item Tectonic also implements a lot of tooling that goes \i{around} its core
+  \TeX\ engine and is necessary to fully build real documents. This tooling is
+  not \TeX\ per se, but is intimately tied to it.
+\end{itemize}
