@@ -1,4 +1,4 @@
-% Copyright 2022 the Tectonic Project
+% Copyright 2022-2023 the Tectonic Project
 % Licensed under the MIT License
 %
 % Tectonopedia document class

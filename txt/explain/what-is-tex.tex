@@ -14,11 +14,12 @@ terminology too often anymore, but \TeX\ is the antithesis of a “WYSIWYG” �
 \href{https://www.microsoft.com/en-us/microsoft-365/word}{Microsoft Word}.
 
 This article is \i{not}, however, going to introduce any specifics of the \TeX\
-programming language. Instead, it aims present some of the most important
-\i{non-technical} aspects of \TeX. \TeX\ is arguably a unique piece of
-technology in the landscape of 21st-century computing, and we hope that
-familiarity with some of its backgroundkx will help you better understand the
-distinctive characteristics of Tectonic and other \TeX-based software.
+programming language. Instead, it aims present some of the non-technical aspects
+of \TeX\ that we think are valuable to understand even if you never end up
+delving deep into its guts. \TeX\ is arguably a unique piece of technology in
+the landscape of 21st-century computing, and we hope that familiarity with some
+of its background will help you better understand the distinctive
+characteristics of Tectonic and other \TeX-based software.
 
 It would be very reasonable to start by asking, \i{why the heck would I want to
 use a programming language to write a report anyway?} A programming language
@@ -39,10 +40,14 @@ And we'll further claim that \i{once you stop accepting the limitations that
 less powerful tools impose on you, you'll start seeing opportunities to use
 \TeX's capabilities everywhere}. That being said, most people do find that \TeX\
 makes the biggest difference for \i{technical documents}: the sorts of works
-that contain math, figures, tables, code, or lots of cross-references. \TeX\ is
-primarily intended for these use cases.
+that contain math, figures, tables, code, or lots of cross-references. \TeX\ was
+primarily designed for these use cases.
 
-XXX \TeX\ has a lot of history behind it. The first version of \TeX\ was created
+% FIXME: without the hspace, the canvas-start special seemingly has a weird
+% position that causes the word TeX to appear in a bad position. The
+% canvas-processing seems OK; it's just that the reference point for all of the
+% letter positions is incorrect!
+\hspace{0in}\TeX\ has a lot of history behind it. The first version of \TeX\ was created
 by legendary computer scientist
 \href{https://en.wikipedia.org/wiki/Donald_Knuth}{Donald E.\ Knuth} and released
 all the way back in 1978. Knuth had been disappointed by the quality of the
@@ -54,7 +59,7 @@ succeeded in its core aim: \TeX\ set a new standard in terms of the sheer
 quality of its typesetting outputs. In order to achieve this result, Knuth
 created the first high-quality digital fonts and developed pioneering new
 algorithms for laying out mathematics, breaking paragraphs into lines, and
-automatically hyphenating words (which is needed to produce acceptable
+automatically hyphenating words (a capability needed to produce acceptable
 fully-justified text). \TeX\ was \i{also} famous for the quality of its
 engineering: it was efficient, reliable, ultra-precise in its output, and as
 close to bug-free as software can get. Finally, Knuth made \TeX\ freely
@@ -64,23 +69,27 @@ To frame it another way: there are very few pieces of software that were
 developed before 1980 that are still in everyday use. \TeX\ is one of them.
 
 Now is as good a time as any to mention that the name “\TeX” is pronounced
-“teck”. It's meant to evoke the Greek root of the word “technology”, with the
-“X” representing the Greek letter chi, χ. (This might seem like a bit of an odd
-choice since one of \TeX's exciting capabilities was that it could actually
-display Greek letters, which are routinely needed in equations!) The preferred
-way to write the name of the software involves the lowered (“kerned”) “E”, which
-is another thing that few systems at the time could do. In situations where you
-can't control kerning, the usual way to write the name of the software is “TeX”.
+“tech”, similar to the word “loch”. It's meant to evoke the Greek root of the
+word “technology”, with the “X” representing the Greek letter chi, χ. (This
+might seem like a bit of an odd choice since one of \TeX's exciting capabilities
+was that it could actually display Greek letters, which are routinely needed in
+equations!) The preferred way to write the name of the software involves the
+lowered (“kerned”) “E”, which is another thing that few systems at the time
+could do. In situations where you can't control kerning, the usual way to write
+the name of the software is “TeX”.
 
-Anyway. In modern contexts, the word “\TeX” might be used to refer to one of a
-variety of related things. \TeX, a programming language, is processed by \TeX, a
-specific computer program. In practice, modern users almost always use extended
-variants of the \TeX\ program, such as \texttt{pdftex}, \texttt{luatex},
-\texttt{xetex}, or Tectonic, which add new features to Knuth's \TeX\ language
-such as support for Unicode. Although Knuth has firmly established that he
-wishes for the name “\TeX” to be reserved for implementations that are precisely
-compatible with the system that he has developed, people will sometimes use the
-word “\TeX” to refer to this broader family when the intent is clear, as these
+It's also worth pointing out that we've been using one word, “\TeX”, to refer to
+two different things. \TeX, a programming language, is processed by \TeX, a
+specific computer program. In principle, different programs might implement the
+\TeX\ programming language.
+
+In fact, modern users almost always use extended variants of the \TeX\ program,
+which have names such as \texttt{pdftex}, \texttt{xetex}, and Tectonic. These
+variants add new features to Knuth's \TeX\ language such as support for more
+modern font formats. These variants are developed in the context of Knuth's firm
+wishes that the name “\TeX” be reserved for programs that are thoroughly
+(\i{really} thoroughly) compatible with his. People will sometimes use the word
+“\TeX” to refer to this broader family when the intent is clear, as these
 related programs have much more in common than they differ. This documentation
 follows that pattern, sometimes using the term “Knuth \TeX” to refer
 emphatically to the non-extended version of the language.
@@ -90,20 +99,15 @@ software needed to create finished documents using the \TeX\ language —
 nowadays, doing this requires a whole suite of programs and data that all work
 together, with the core \TeX\ “engine” being only one of those pieces. For
 instance, the majority of modern \TeX\ documents are written using the \LaTeX\
-system. \LaTeX\ extends the baseline \TeX\ language with higher-level constructs
-amounting to tens of thousands of lines of code, and can itself be extended with
-\i{thousands} of add-on packages. Once again, when the context is clear, the
-term “\TeX” is often used as
+system, which extends the baseline \TeX\ language with higher-level constructs
+amounting to tens of thousands of lines of code. \LaTeX\ can itself be extended
+with \i{thousands} of add-on packages. The term “\TeX” is often used as
 \href{https://en.wikipedia.org/wiki/Synecdoche}{synecdoche} for this broader
 ecosystem.
 
-In the context of Tectonic, there are therefore a few basic principles to keep
-in mind:
+
+\section*{See Also}
+
 \begin{itemize}
-\item Tectonic implements \i{a form of} the \TeX\ language, one that we refer to
-  as “Tectonic \TeX”. This is very similar to, but not always fully compatible
-  with, the forms of \TeX\ implemented by other engines such as \texttt{luatex}.
-\item Tectonic also implements a lot of tooling that goes \i{around} its core
-  \TeX\ engine and is necessary to fully build real documents. This tooling is
-  not \TeX\ per se, but is intimately tied to it.
+  \item \pediaLinkRef{explainers}{why-tex}
 \end{itemize}
