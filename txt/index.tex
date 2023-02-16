@@ -1,0 +1,22 @@
+% The main landing page.
+
+\tduxSetupOutput{template.html}{index.html}
+\immediate\write\pediaIndex{\string\output{index.html}}
+\def\pediaRelTop{./}
+\tduxSetTemplateVariable{pediaTitle}{Welcome}
+\tduxSetTemplateVariable{pediaBookName}{Tectonopedia}
+
+Welcome to the \b{Tectonopedia}, the home for comprehensive documentation of the
+Tectonic software system and its implementation of the \TeX\ language.
+
+I don't know what to actually put here just yet! Here are some pages that exist:
+
+\begin{itemize}
+  \item Entry: \e{dump}
+  \item Entry: \e{end}
+  \item Entry: \e{format}
+  \item Entry: \e{format-file}
+  \item Entry: \e{message}
+  \item Explainer: \pediaLinkRef{explainers}{what-is-tex}
+  \item Explainer: \pediaLinkRef{explainers}{why-tex}
+\end{itemize}
