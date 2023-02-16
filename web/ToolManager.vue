@@ -263,6 +263,10 @@ function toggleSearch() {
 
 function onDoTool(kind: ToolKind) {
   active.value = kind;
+
+  if (kind == ToolKind.Search) {
+    search.value?.activate();
+  }
 }
 
 // When we're mounted, figure out if we're in mobile or desktop mode;
