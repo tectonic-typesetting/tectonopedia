@@ -3,19 +3,19 @@
     <ul class="actions">
       <li>
         <button class="icon-button" type="button" @click="onSearch">
-          <FontAwesomeIcon icon="fa-solid fa-magnifying-glass" size="xl" fixedWidth=true /> Search
+          <FontAwesomeIcon icon="fa-solid fa-magnifying-glass" size="xl" :fixedWidth="true" /> Search
         </button>
       </li>
       <li>
         <button class="icon-button" type="button" @click="onHelp">
-          <FontAwesomeIcon icon="fa-solid fa-life-ring" size="xl" fixedWidth=true /> Help
+          <FontAwesomeIcon icon="fa-solid fa-life-ring" size="xl" :fixedWidth="true" /> Help
         </button>
       </li>
     </ul>
     <ul class="actions">
       <li>
         <button class="icon-button" type="button" @click="onClose">
-          <FontAwesomeIcon icon="fa-solid fa-bars" size="xl" fixedWidth=true /> Close toolbox
+          <FontAwesomeIcon icon="fa-solid fa-bars" size="xl" :fixedWidth="true" /> Close toolbox
         </button>
       </li>
     </ul>
