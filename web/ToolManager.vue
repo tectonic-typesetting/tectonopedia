@@ -219,9 +219,13 @@ const toolTitle = computed(() => {
 });
 
 watch(active, (newActive: ToolKind) => {
-  // Watch this value to set a CSS class on the root HTML element
-  // so that we can wire up some CSS-driven reactivity in the main
-  // app.
+  // Watch this value to set a CSS class on the root HTML element so that we can
+  // wire up some CSS-driven reactivity in the main app.
+  //
+  // Our HTML template manually includes a `tools-visible` class on the root
+  // HTML element, because otherwise the CSS animation shows the toolbox sliding
+  // into position upon the first page load in desktop mode. This initially
+  // seems a little cute but is distracting overall.
   const html = document.querySelector("html");
 
   if (newActive == ToolKind.None) {
