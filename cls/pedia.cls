@@ -189,7 +189,7 @@ Dhref #1}#2\special{tdux:me a}%
 %  must be defined. A "t" in the flags indicates that the entry's
 %  text must be defined.
 \newcommand{\pediaLogRef}[3]{%
-  \write\pediaIndex{\string\iref{#1}{#2}{#3}}%
+  \immediate\write\pediaIndex{\string\iref{#1}{#2}{#3}}%
 }
 %
 % \pediaEnsureRefCS{INDEX}{ENTRY}{DATATYPE}
@@ -360,5 +360,41 @@ Dhref #1}#2\special{tdux:me a}%
   % Finally we can also set the page title
   \tduxSetTemplateVariable{pediaTitle}{\the\pedia@maybeVerbatimToks}
   \tduxSetTemplateVariable{pediaBookName}{Tectonopedia: Explainers}
+}
+\makeatother
+%
+% "terms"
+%
+% TODO: add starred variant when the typeset form of the term is different than
+% the plaintext.
+\newcommand{\DeclareTerm}[1]{%
+  \immediate\write\pediaIndex{\string\idef{terms}{#1}{}}%
+  \immediate\write\pediaIndex{\string\itext{terms}{#1}{#1}{#1}}%
+}
+\makeatletter
+\def\`{%
+  \begingroup
+  % Need to do \@noligs before our customization because \@noligs resets the
+  % catcode of ` to be active!
+  \@noligs
+  \catcode`\\=12
+  \catcode`\$=12
+  \catcode`\&=12
+  \catcode`\#=12
+  \catcode`\%=12
+  \catcode`\~=12
+  \catcode`\_=12
+  \catcode`\^=12
+  \catcode`\{=12
+  \catcode`\}=12
+  \catcode`\`=2% = endgroup
+  \pedia@makeActiveWhitespace
+  \pedia@defineActiveWhitespace
+  \afterassignment\pedia@termrefTail
+  \global\pedia@maybeVerbatimToks=\bgroup%
+}%
+\def\pedia@termrefTail{%
+  \endgroup
+  \pediaLinkRef{terms}{\the\pedia@maybeVerbatimToks}%
 }
 \makeatother
