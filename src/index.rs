@@ -362,14 +362,11 @@ impl IndexCollection {
                 let o = self.indices[OUTPUTS_INDEX_INDEX].resolve(loc.output);
                 let f = self.indices[FRAGMENTS_INDEX_INDEX].resolve(loc.fragment);
 
-                // I would like to strip off the explicit page name like this, but
-                // it seems to be confusing Parcel, and I don't feel like chasing the
-                // problem down right now.
-                //let o = if o.ends_with("/index.html") {
-                //    &o[..o.len() - 10]
-                //} else {
-                //    o
-                //};
+                let o = if o.ends_with("/index.html") {
+                    &o[..o.len() - 10]
+                } else {
+                    o
+                };
 
                 writeln!(
                     tex,
