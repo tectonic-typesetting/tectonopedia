@@ -367,11 +367,29 @@ Dhref #1}#2\special{tdux:me a}%
 %
 % TODO: add starred variant when the typeset form of the term is different than
 % the plaintext.
-\newcommand{\DeclareTerm}[1]{%
-  \immediate\write\pediaIndex{\string\idef{terms}{#1}{}}%
-  \immediate\write\pediaIndex{\string\itext{terms}{#1}{#1}{#1}}%
-}
 \makeatletter
+\newtoks\pedia@termtmp
+\newcommand{\DeclareTerm}{%
+  \@ifstar{\pedia@declareTermStarred}{\pedia@declareTermNoStar}%
+}
+\newcommand{\pedia@declareTermNoStar}{\pediaScanVerbatim\pedia@declareTermNoStarTail}
+\newcommand{\pedia@declareTermNoStarTail}{%
+  % the single form, used for both plain and TeX, is in \pedia@maybeVerbatimToks
+  \immediate\write\pediaIndex{\string\idef{terms}{\the\pedia@maybeVerbatimToks}{}}%
+  \immediate\write\pediaIndex{\string\itext{terms}{\the\pedia@maybeVerbatimToks}{\the\pedia@maybeVerbatimToks}{\the\pedia@maybeVerbatimToks}}%
+}
+\newcommand{\pedia@declareTermStarred}{\pediaScanVerbatim\pedia@declareTermStarredTailA}
+\newcommand{\pedia@declareTermStarredTailA}{%
+  % the TeX form is in \pedia@maybeVerbatimToks
+  \pedia@termtmp=\pedia@maybeVerbatimToks
+  \pediaScanVerbatim\pedia@declareTermStarredTailB
+}
+\newcommand{\pedia@declareTermStarredTailB}{%
+  % the TeX form is in \pedia@termtmp; the plain form is \pedia@maybeVerbatimToks
+  % (since it is scanned in verbatim mode)
+  \immediate\write\pediaIndex{\string\idef{terms}{\the\pedia@maybeVerbatimToks}{}}%
+  \immediate\write\pediaIndex{\string\itext{terms}{\the\pedia@maybeVerbatimToks}{\the\pedia@termtmp}{\the\pedia@maybeVerbatimToks}}%
+}
 \def\`{%
   \begingroup
   % Need to do \@noligs before our customization because \@noligs resets the
