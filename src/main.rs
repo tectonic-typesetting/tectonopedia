@@ -98,7 +98,11 @@ impl BuildArgs {
             indices.validate_references();
             ["failed to validate cross-references"]
         );
-        tt_note!(status, "validated indices - {}", indices.index_summary());
+        tt_note!(
+            status,
+            "index validation: complete - {}",
+            indices.index_summary()
+        );
 
         // TeX pass 2, emitting
 
