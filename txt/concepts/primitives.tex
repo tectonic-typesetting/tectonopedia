@@ -1,0 +1,559 @@
+\entry{primitive}{Primitive}{Primitive}
+\DeclareTerm*{\TeX\ primitive}{TeX primitive}
+
+A \b{primitive} is a basic command built into the \TeX\ engine.
+
+Each primitive is associated with a specific control sequence. However, because
+the meaning of a control sequence can be reassigned arbitrarily, the appearance
+of a primitive's name in some \TeX\ source may not mean that that primitive is
+actually invoked. A prominent example of this is the \tex`\end` control sequence
+in \LaTeX, which is not the same thing as \e{end}. The control sequence
+associated with a given primitive can be thought of as its name in an abstract
+sense, but in any given document that control sequence may have a different
+meaning.
+
+The primitives can be grouped into several broad categories:
+
+\begin{itemize}
+  \item 80 integer parameters,
+  \item 23 dimensional parameters,
+  \item 19 glue parameters (16 regular and 3 math),
+  \item 12 token-list parameters,
+  \item 5 shape or penalties parameters
+  \item 361 other primitives.
+\end{itemize}
+
+Integer parameters:
+
+\begin{itemize}
+  \item adjdemerits
+  \item binoppenalty
+  \item brokenpenalty
+  \item clubpenalty
+  \item day
+  \item defaulthyphenchar
+  \item defaultskewchar
+  \item delimiterfactor
+  \item displaywidowpenalty
+  \item doublehyphendemerits
+  \item endlinechar
+  \item errorcontextlines
+  \item escapechar
+  \item exhyphenpenalty
+  \item fam
+  \item finalhyphendemerits
+  \item floatingpenalty
+  \item globaldefs
+  \item hangafter
+  \item hbadness
+  \item holdinginserts
+  \item hyphenpenalty
+  \item interlinepenalty
+  \item language
+  \item lastlinefit
+  \item lefthyphenmin
+  \item linepenalty
+  \item looseness
+  \item mag
+  \item maxdeadcycles
+  \item month
+  \item newlinechar
+  \item outputpenalty
+  \item pausing
+  \item pdfoutput
+  \item postdisplaypenalty
+  \item predisplaydirection
+  \item predisplaypenalty
+  \item pretolerance
+  \item relpenalty
+  \item righthyphenmin
+  \item savinghyphcodes
+  \item savingvdiscards
+  \item showboxbreadth
+  \item showboxdepth
+  \item suppressfontnotfounderror
+  \item synctex
+  \item TeXXeTstate
+  \item time
+  \item tolerance
+  \item tracingassigns
+  \item tracingcommands
+  \item tracinggroups
+  \item tracingifs
+  \item tracinglostchars
+  \item tracingmacros
+  \item tracingnesting
+  \item tracingonline
+  \item tracingoutput
+  \item tracingpages
+  \item tracingparagraphs
+  \item tracingrestores
+  \item tracingscantokens
+  \item tracingstacklevels
+  \item tracingstats
+  \item uchyph
+  \item vbadness
+  \item widowpenalty
+  \item XeTeXdashbreakstate
+  \item XeTeXgenerateactualtext
+  \item XeTeXhyphenatablelength
+  \item XeTeXinputnormalization
+  \item XeTeXinterchartokenstate
+  \item XeTeXinterwordspaceshaping
+  \item XeTeXlinebreakpenalty
+  \item XeTeXprotrudechars
+  \item XeTeXtracingfonts
+  \item XeTeXupwardsmode
+  \item XeTeXuseglyphmetrics
+  \item year
+\end{itemize}
+
+Dimen pars:
+
+\begin{itemize}
+  \item boxmaxdepth
+  \item delimitershortfall
+  \item displayindent
+  \item displaywidth
+  \item emergencystretch
+  \item hangindent
+  \item hfuzz
+  \item hoffset
+  \item hsize
+  \item lineskiplimit
+  \item mathsurround
+  \item maxdepth
+  \item nulldelimiterspace
+  \item overfullrule
+  \item parindent
+  \item pdfpageheight
+  \item pdfpagewidth
+  \item predisplaysize
+  \item scriptspace
+  \item splitmaxdepth
+  \item vfuzz
+  \item voffset
+  \item vsize
+\end{itemize}
+
+Regular glue parameters:
+
+\begin{itemize}
+  \item abovedisplayshortskip
+  \item abovedisplayskip
+  \item baselineskip
+  \item belowdisplayshortskip
+  \item belowdisplayskip
+  \item leftskip
+  \item lineskip
+  \item parfillskip
+  \item parskip
+  \item rightskip
+  \item spaceskip
+  \item splittopskip
+  \item tabskip
+  \item topskip
+  \item XeTeXlinebreakskip
+  \item xspaceskip
+\end{itemize}
+
+Math glue parameters:
+
+\begin{itemize}
+  \item medmuskip
+  \item thickmuskip
+  \item thinmuskip
+\end{itemize}
+
+Token list parameters:
+
+\begin{itemize}
+  \item errhelp
+  \item everycr
+  \item everydisplay
+  \item everyeof
+  \item everyhbox
+  \item everyjob
+  \item everymath
+  \item everypar
+  \item everyvbox
+  \item output
+  \item TectonicCodaTokens
+  \item XeTeXinterchartoks
+\end{itemize}
+
+Shape / penalties parameters:
+
+\begin{itemize}
+  \item clubpenalties
+  \item displaywidowpenalties
+  \item interlinepenalties
+  \item parshape
+  \item widowpenalties
+\end{itemize}
+
+Everything else:
+
+\begin{itemize}
+  \item - (discretionary hyphen)
+  \item " " (explicit space)
+  \item / (italic correction)
+  \item above
+  \item abovewithdelims
+  \item accent
+  \item advance
+  \item afterassignment
+  \item aftergroup
+  \item atop
+  \item atopwithdelims
+  \item badness
+  \item batchmode
+  \item begingroup
+  \item beginL
+  \item beginR
+  \item botmarks
+  \item botmark
+  \item box
+  \item catcode
+  \item char
+  \item chardef
+  \item cleaders
+  \item closein
+  \item closeout
+  \item copy
+  \item countdef
+  \item count
+  \item cr
+  \item crcr
+  \item creationdate
+  \item csname
+  \item currentgrouplevel
+  \item currentgrouptype
+  \item currentifbranch
+  \item currentiflevel
+  \item currentiftype
+  \item deadcycles
+  \item def
+  \item delcode
+  \item delimiter
+  \item detokenize
+  \item dimendef
+  \item dimen
+  \item dimexpr
+  \item discretionary
+  \item displaylimits
+  \item displaystyle
+  \item divide
+  \item dp
+  \item dump
+  \item edef
+  \item elapsedtime
+  \item else
+  \item endcsname
+  \item endgroup
+  \item endinput
+  \item endL
+  \item endR
+  \item end
+  \item eqno
+  \item errmessage
+  \item errorstopmode
+  \item eTeXrevision
+  \item eTeXversion
+  \item expandafter
+  \item expanded
+  \item fi
+  \item filedump
+  \item filemoddate
+  \item filesize
+  \item firstmarks
+  \item firstmark
+  \item fontchardp
+  \item fontcharht
+  \item fontcharic
+  \item fontcharwd
+  \item font
+  \item fontdimen
+  \item fontname
+  \item futurelet
+  \item gdef
+  \item global
+  \item glueexpr
+  \item glueshrink
+  \item glueshrinkorder
+  \item gluestretch
+  \item gluestretchorder
+  \item gluetomu
+  \item halign
+  \item hbox
+  \item hfil
+  \item hfill
+  \item hfilneg
+  \item hrule
+  \item hskip
+  \item hss
+  \item ht
+  \item hyphenation
+  \item hyphenchar
+  \item ifcase
+  \item ifcat
+  \item ifcsname
+  \item ifdefined
+  \item ifdim
+  \item ifeof
+  \item iffalse
+  \item iffontchar
+  \item ifhbox
+  \item ifhmode
+  \item if
+  \item ifincsname
+  \item ifinner
+  \item ifmmode
+  \item ifnum
+  \item ifodd
+  \item ifprimitive
+  \item iftrue
+  \item ifvbox
+  \item ifvmode
+  \item ifvoid
+  \item ifx
+  \item ignorespaces
+  \item immediate
+  \item indent
+  \item input
+  \item inputlineno
+  \item insert
+  \item insertpenalties
+  \item interactionmode
+  \item jobname
+  \item kern
+  \item lastbox
+  \item lastkern
+  \item lastnodetype
+  \item lastpenalty
+  \item lastskip
+  \item lccode
+  \item leaders
+  \item left
+  \item leftmarginkern
+  \item leqno
+  \item let
+  \item limits
+  \item long
+  \item lowercase
+  \item lower
+  \item lpcode
+  \item mark
+  \item marks
+  \item mathaccent
+  \item mathbin
+  \item mathchardef
+  \item mathchar
+  \item mathchoice
+  \item mathclose
+  \item mathcode
+  \item mathinner
+  \item mathopen
+  \item mathop
+  \item mathord
+  \item mathpunct
+  \item mathrel
+  \item mdfivesum
+  \item meaning
+  \item message
+  \item middle
+  \item mkern
+  \item moveleft
+  \item moveright
+  \item mskip
+  \item muexpr
+  \item multiply
+  \item muskipdef
+  \item muskip
+  \item mutoglue
+  \item noalign
+  \item noboundary
+  \item noexpand
+  \item noindent
+  \item nolimits
+  \item nonscript
+  \item nonstopmode
+  \item normaldeviate
+  \item nullfont
+  \item number
+  \item numexpr
+  \item omit
+  \item openin
+  \item openout
+  \item or
+  \item outer
+  \item over
+  \item overline
+  \item overwithdelims
+  \item pagedepth
+  \item pagediscards
+  \item pagefilllstretch
+  \item pagefillstretch
+  \item pagefilstretch
+  \item pagegoal
+  \item pageshrink
+  \item pagestretch
+  \item pagetotal
+  \item par
+  \item parshapedimen
+  \item parshapeindent
+  \item parshapelength
+  \item patterns
+  \item pdflastxpos
+  \item pdflastypos
+  \item pdfsavepos
+  \item penalty
+  \item prevdepth
+  \item prevgraf
+  \item primitive
+  \item protected
+  \item radical
+  \item raise
+  \item randomseed
+  \item readline
+  \item read
+  \item relax
+  \item resettimer
+  \item right
+  \item rightmarginkern
+  \item romannumeral
+  \item rpcode
+  \item scantokens
+  \item scriptfont
+  \item scriptscriptfont
+  \item scriptscriptstyle
+  \item scriptstyle
+  \item scrollmode
+  \item setbox
+  \item setlanguage
+  \item setrandomseed
+  \item sfcode
+  \item shellescape
+  \item shipout
+  \item showbox
+  \item showgroups
+  \item showifs
+  \item showlists
+  \item showthe
+  \item showtokens
+  \item show
+  \item skewchar
+  \item skipdef
+  \item skip
+  \item spacefactor
+  \item span
+  \item special
+  \item splitbotmarks
+  \item splitbotmark
+  \item splitdiscards
+  \item splitfirstmarks
+  \item splitfirstmark
+  \item strcmp
+  \item string
+  \item textfont
+  \item textstyle
+  \item the
+  \item toksdef
+  \item toks
+  \item topmarks
+  \item topmark
+  \item uccode
+  \item Ucharcat
+  \item Uchar
+  \item Udelcodenum
+  \item Udelcode
+  \item Udelimiter
+  \item Umathaccent
+  \item Umathchardef
+  \item Umathchar
+  \item Umathcharnumdef
+  \item Umathcharnum
+  \item Umathcodenum
+  \item Umathcode
+  \item underline
+  \item unexpanded
+  \item unhbox
+  \item unhcopy
+  \item uniformdeviate
+  \item unkern
+  \item unless
+  \item unpenalty
+  \item unskip
+  \item unvbox
+  \item unvcopy
+  \item uppercase
+  \item Uradical
+  \item vadjust
+  \item valign
+  \item vbox
+  \item vcenter
+  \item vfill
+  \item vfilneg
+  \item vfil
+  \item vrule
+  \item vskip
+  \item vsplit
+  \item vss
+  \item vtop
+  \item wd
+  \item write
+  \item xdef
+  \item XeTeXcharclass
+  \item XeTeXcharglyph
+  \item XeTeXcountfeatures
+  \item XeTeXcountglyphs
+  \item XeTeXcountselectors
+  \item XeTeXcountvariations
+  \item XeTeXdefaultencoding
+  \item XeTeXdelcodenum
+  \item XeTeXdelcode
+  \item XeTeXdelimiter
+  \item XeTeXfeaturecode
+  \item XeTeXfeaturename
+  \item XeTeXfindfeaturebyname
+  \item XeTeXfindselectorbyname
+  \item XeTeXfindvariationbyname
+  \item XeTeXfirstfontchar
+  \item XeTeXfonttype
+  \item XeTeXglyphbounds
+  \item XeTeXglyph
+  \item XeTeXglyphindex
+  \item XeTeXglyphname
+  \item XeTeXinputencoding
+  \item XeTeXisdefaultselector
+  \item XeTeXisexclusivefeature
+  \item XeTeXlastfontchar
+  \item XeTeXlinebreaklocale
+  \item XeTeXmathaccent
+  \item XeTeXmathchardef
+  \item XeTeXmathchar
+  \item XeTeXmathcharnumdef
+  \item XeTeXmathcharnum
+  \item XeTeXmathcodenum
+  \item XeTeXmathcode
+  \item XeTeXOTcountfeatures
+  \item XeTeXOTcountlanguages
+  \item XeTeXOTcountscripts
+  \item XeTeXOTfeaturetag
+  \item XeTeXOTlanguagetag
+  \item XeTeXOTscripttag
+  \item XeTeXpdffile
+  \item XeTeXpdfpagecount
+  \item XeTeXpicfile
+  \item XeTeXradical
+  \item XeTeXrevision
+  \item XeTeXselectorcode
+  \item XeTeXselectorname
+  \item XeTeXvariationdefault
+  \item XeTeXvariation
+  \item XeTeXvariationmax
+  \item XeTeXvariationmin
+  \item XeTeXvariationname
+  \item XeTeXversion
+  \item xleaders
+\end{itemize}
