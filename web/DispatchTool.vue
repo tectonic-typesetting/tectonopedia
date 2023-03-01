@@ -7,6 +7,13 @@
         </button>
       </li>
       <li>
+        <a :href="relTop">
+          <button class="icon-button" type="button">
+            <FontAwesomeIcon icon="fa-solid fa-house" size="xl" :fixedWidth="true" /> Home
+          </button>
+        </a>
+      </li>
+      <li>
         <button class="icon-button" type="button" @click="onHelp">
           <FontAwesomeIcon icon="fa-solid fa-life-ring" size="xl" :fixedWidth="true" /> Help
         </button>
@@ -44,6 +51,10 @@
       border: 1px solid var(--searchbar-border-color);
     }
 
+    a {
+      color: inherit;
+    }
+
     button {
       width: 100%;
       height: 100%;
@@ -63,6 +74,10 @@
 
 <script setup lang="ts">
 import { ToolKind } from "./base";
+
+defineProps({
+  relTop: { type: String, required: true },
+});
 
 const emit = defineEmits<{
   (e: "doTool", kind: ToolKind): void;

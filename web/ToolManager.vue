@@ -27,7 +27,7 @@
         provides access to all of its functionality. We need to provide a way to
         get at everything without using a keyboard for mobile. -->
       <div v-show="active == ToolKind.Dispatch" class="tool-container">
-        <DispatchTool @do-tool="onDoTool"></DispatchTool>
+        <DispatchTool :relTop="relTop" @do-tool="onDoTool"></DispatchTool>
       </div>
 
       <!-- The "help" tool shows help on using the app. -->
