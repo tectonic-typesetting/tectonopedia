@@ -30,6 +30,7 @@ pub struct MultiVec<T> {
 impl<T> MultiVec<T> {
     /// Add a new entry to the multi-vec. Returns an error if it's already been
     /// added.
+    #[allow(unused)]
     pub fn add_extend<I>(&mut self, id: usize, iter: I) -> Result<()>
     where
         I: IntoIterator<Item = T>,

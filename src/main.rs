@@ -1,4 +1,4 @@
-// Copyright 2022 the Tectonic Project
+// Copyright 2022-2023 the Tectonic Project
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
@@ -9,6 +9,7 @@ use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
 mod config;
 mod holey_vec;
+mod incremental;
 mod index;
 mod inputs;
 mod metadata;
@@ -78,6 +79,10 @@ impl BuildArgs {
 
         // Set up data structures
 
+        let cache = atry!(
+            incremental::Cache::new(status);
+            ["error initializing build cache"]
+        );
         let mut indices = index::IndexCollection::default();
 
         atry!(
@@ -87,48 +92,48 @@ impl BuildArgs {
 
         // First TeX pass of indexing and gathering font/asset information.
 
-        let mut p1r = pass1::Pass1Reducer::new(indices);
+        let mut p1r = pass1::Pass1Reducer::new(indices, cache);
         let ninputs = texworker::reduce_inputs(&mut p1r, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
-        let (assets, indices) = p1r.unpack();
+        let (_assets, _indices) = p1r.unpack();
 
         // Resolve cross-references and validate.
 
-        atry!(
-            indices.validate_references();
-            ["failed to validate cross-references"]
-        );
-        tt_note!(
-            status,
-            "index validation: complete - {}",
-            indices.index_summary()
-        );
-
-        // TeX pass 2, emitting
-
-        let mut entrypoints_file = atry!(
-            File::create("build/_all.html");
-            ["error creating output `build/_all.html`"]
-        );
-
-        // By adding the reference to shared files here at the top of this
-        // entrypoint, we get Parcel.js to emit the associated built files under
-        // this file's name. Otherwise they get tied to whatever happens to be
-        // the first entry that we emit.
-        atry!(
-            writeln!(
-                entrypoints_file,
-                "<link rel=\"stylesheet\" href=\"./tdux-fonts.css\">\n\
-                <script src=\"../web/index.ts\" type=\"module\"></script>"
-            );
-            ["error writing to output `build/_all.html`"]
-        );
-
-        let mut p2r = pass2::Pass2Reducer::new(assets, indices, entrypoints_file);
-        texworker::reduce_inputs(&mut p2r, status)?;
-        let n_outputs = p2r.n_outputs();
-        tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
-
+        // atry!(
+        //     indices.validate_references();
+        //     ["failed to validate cross-references"]
+        // );
+        // tt_note!(
+        //     status,
+        //     "index validation: complete - {}",
+        //     indices.index_summary()
+        // );
+        //
+        // // TeX pass 2, emitting
+        //
+        // let mut entrypoints_file = atry!(
+        //     File::create("build/_all.html");
+        //     ["error creating output `build/_all.html`"]
+        // );
+        //
+        // // By adding the reference to shared files here at the top of this
+        // // entrypoint, we get Parcel.js to emit the associated built files under
+        // // this file's name. Otherwise they get tied to whatever happens to be
+        // // the first entry that we emit.
+        // atry!(
+        //     writeln!(
+        //         entrypoints_file,
+        //         "<link rel=\"stylesheet\" href=\"./tdux-fonts.css\">\n\
+        //         <script src=\"../web/index.ts\" type=\"module\"></script>"
+        //     );
+        //     ["error writing to output `build/_all.html`"]
+        // );
+        //
+        // let mut p2r = pass2::Pass2Reducer::new(assets, indices, entrypoints_file);
+        // texworker::reduce_inputs(&mut p2r, status)?;
+        // let n_outputs = p2r.n_outputs();
+        // tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
+        //
         tt_note!(
             status,
             "build took {:.1} seconds",

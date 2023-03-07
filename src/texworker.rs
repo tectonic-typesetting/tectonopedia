@@ -108,8 +108,17 @@ macro_rules! stry {
     };
 }
 
+/// A type that can drive a TeX worker process.
+///
+/// This type is created in the primary thread and sent to one of the threadpool
+/// worker threads. In that worker thread, it then interacts closely with the
+/// TeX subprocess. Once that subprocess exits, it is consumed, and its [`Item`]
+/// value is then sent back to the main thread.
 pub trait WorkerDriver: Send {
     /// The type that will be returned to the driver thread.
+    ///
+    /// Since a WorkerDriver must itself be `Send`, it might make sense for this
+    /// associated type to be `Self`.
     type Item: Send + 'static;
 
     /// Initialize arguments/settings for the subcommand that will be run, which
@@ -217,12 +226,25 @@ fn process_one_input<W: WorkerDriver>(
     }
 }
 
+/// A type that can manage the execution of a large batch of TeX processing jobs.
 pub trait TexReducer {
+    /// This associated type is the one that actually deals with managing a TeX
+    /// subprocess. Workers are created in the main thread and sent to a
+    /// threadpool worker thread, in which they interact with the TeX
+    /// subprocess. After that subprocess exits, the worker is consumed and its
+    /// `Item` type is returned to the main thread.
     type Worker: WorkerDriver + 'static;
 
+    /// Assign an opaque input identifier to an input that is to be processed.
+    /// This function is called in the main thread.
     fn assign_input_id(&mut self, input_name: String) -> InputId;
 
-    fn make_worker(&mut self) -> Self::Worker;
+    /// Can we skip this input?
+    fn needs_to_be_run(&mut self, id: InputId) -> Result<bool, WorkerError<Error>>;
+
+    /// Create a worker object. This function is called in the main thread. The
+    /// worker will be sent to a worker thread and then drive a TeX subprocess.
+    fn make_worker(&mut self, id: InputId) -> Result<Self::Worker, WorkerError<Error>>;
 
     /// This function must print out any error if one is encountered. Due to the
     /// parallelization approach, the returned result can indicate error
@@ -256,7 +278,54 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
         let tx = tx.clone();
         let sp = self_path.clone();
         let id = red.assign_input_id(entry.path().display().to_string());
-        let driver = red.make_worker();
+
+        // FIX ME
+        let needs = match red.needs_to_be_run(id) {
+            Ok(d) => d,
+
+            Err(WorkerError::General(e)) => {
+                n_failures += 1;
+                tt_error!(status, "needs test failed for input `{}`; giving up early", entry.path().display(); e);
+                break; // give up
+            }
+
+            Err(WorkerError::Specific(e)) => {
+                // TODO: if, say, 3 of the first 5 builds fail, give up
+                // the whole shebang, under the assumption that
+                // something is messed up that will break all of the
+                // builds.
+                n_failures += 1;
+                tt_error!(status, "needs test failed for input `{}`; trying others", entry.path().display(); e);
+                continue;
+            }
+        };
+
+        if !needs {
+            tt_warning!(status, "skipping input `{}`!!!", entry.path().display());
+            continue;
+        }
+
+        // Weakness here: we really ought to have an input-specific status object
+        // for reporting this
+        let driver = match red.make_worker(id) {
+            Ok(d) => d,
+
+            Err(WorkerError::General(e)) => {
+                n_failures += 1;
+                tt_error!(status, "setup failed for input `{}`; giving up early", entry.path().display(); e);
+                break; // give up
+            }
+
+            Err(WorkerError::Specific(e)) => {
+                // TODO: if, say, 3 of the first 5 builds fail, give up
+                // the whole shebang, under the assumption that
+                // something is messed up that will break all of the
+                // builds.
+                n_failures += 1;
+                tt_error!(status, "setup failed for input `{}`; trying others", entry.path().display(); e);
+                continue;
+            }
+        };
 
         pool.execute(move || {
             tx.send(process_one_input(driver, sp, entry, id, n_tasks))
@@ -278,6 +347,10 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
                     }
 
                     Err(WorkerError::Specific(_)) => {
+                        // TODO: if, say, 3 of the first 5 builds fail, give up
+                        // the whole shebang, under the assumption that
+                        // something is messed up that will break all of the
+                        // builds.
                         n_failures += 1;
                     }
                 }

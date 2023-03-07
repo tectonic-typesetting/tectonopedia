@@ -1,5 +1,7 @@
-// Copyright 2022 the Tectonic Project
+// Copyright 2022-2023 the Tectonic Project
 // Licensed under the MIT License
+
+#![allow(unused)]
 
 use std::{fmt::Write, fs::File, io::Read};
 use string_interner::{StringInterner, Symbol};

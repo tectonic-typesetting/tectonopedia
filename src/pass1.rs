@@ -1,13 +1,13 @@
-// Copyright 2022 the Tectonic Project
+// Copyright 2022-2023 the Tectonic Project
 // Licensed under the MIT License
 
 //! "Pass 1"
 
 use clap::Args;
 use std::{
-    collections::HashMap,
     io::{BufRead, BufReader, Cursor},
     process::{ChildStdin, Command},
+    sync::{Arc, Mutex},
 };
 use tectonic::{
     config::PersistentConfig,
@@ -23,9 +23,13 @@ use walkdir::DirEntry;
 
 use crate::{
     gtry,
-    index::{EntryText, IndexCollection, IndexId, IndexRef},
-    metadata::Metadatum,
-    ogtry, ostry, stry,
+    incremental::{Cache, Pass1Cacher},
+    index::{IndexCollection, IndexId},
+    //index::{EntryText, IndexCollection, IndexId, IndexRef},
+    //metadata::Metadatum,
+    ogtry,
+    ostry,
+    stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
     worker_status::WorkerStatusBackend,
     InputId,
@@ -34,6 +38,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Pass1Reducer {
     assets: AssetSpecification,
+    cache: Arc<Mutex<Cache>>,
     indices: IndexCollection,
     inputs_index_id: IndexId,
 }
@@ -46,38 +51,60 @@ impl TexReducer for Pass1Reducer {
             .reference_by_id(self.inputs_index_id, input_name)
     }
 
-    fn make_worker(&mut self) -> Self::Worker {
-        Default::default()
+    fn needs_to_be_run(&mut self, id: InputId) -> Result<bool, WorkerError<Error>> {
+        let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
+        let mut status = WorkerStatusBackend::new(input_path);
+        let mut cache = self.cache.lock().unwrap();
+        Ok(stry!(cache.input_needs_pass1(input_path, &mut status)))
+    }
+
+    fn make_worker(&mut self, id: InputId) -> Result<Self::Worker, WorkerError<Error>> {
+        let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
+        let cache = self.cache.clone();
+
+        let mut c = self.cache.lock().unwrap();
+        let cacher = stry!(Pass1Cacher::new(&input_path, &mut c));
+        Ok(Pass1Driver {
+            cacher,
+            cache,
+            n_errors: 0,
+        })
     }
 
     fn process_item(&mut self, id: InputId, item: Pass1Driver) -> Result<(), WorkerError<()>> {
         let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
         let mut status = WorkerStatusBackend::new(input_path);
 
-        match self.process_item_inner(id, item, &mut status) {
-            Ok(index_refs) => {
-                // This function only fails if the references for the given input have
-                // already been logged, which should never happen to us.
-                self.indices.log_references(id, index_refs).unwrap();
-            }
-
-            Err(e) => {
-                self.indices.log_references(id, vec![]).unwrap();
-                tt_error!(status, "failed to process pass 1 data"; e);
-                return Err(WorkerError::Specific(()));
-            }
+        if let Err(e) = self.process_item_inner(id, item, &mut status) {
+            tt_error!(status, "failed to process pass 1 data"; e);
+            return Err(WorkerError::Specific(()));
         }
+
+        //match self.process_item_inner(id, item, &mut status) {
+        //    Ok(index_refs) => {
+        //        // This function only fails if the references for the given input have
+        //        // already been logged, which should never happen to us.
+        //        self.indices.log_references(id, index_refs).unwrap();
+        //    }
+        //
+        //    Err(e) => {
+        //        self.indices.log_references(id, vec![]).unwrap();
+        //        tt_error!(status, "failed to process pass 1 data"; e);
+        //        return Err(WorkerError::Specific(()));
+        //    }
+        //}
 
         Ok(())
     }
 }
 
 impl Pass1Reducer {
-    pub fn new(indices: IndexCollection) -> Self {
+    pub fn new(indices: IndexCollection, cache: Cache) -> Self {
         let inputs_index_id = indices.get_index("inputs").unwrap();
 
         Pass1Reducer {
             assets: Default::default(),
+            cache: Arc::new(Mutex::new(cache)),
             indices,
             inputs_index_id,
         }
@@ -87,6 +114,17 @@ impl Pass1Reducer {
         (self.assets, self.indices)
     }
 
+    fn process_item_inner(
+        &mut self,
+        _id: InputId,
+        item: Pass1Driver,
+        _status: &mut dyn StatusBackend,
+    ) -> Result<()> {
+        let mut cache = item.cache.lock().unwrap();
+        item.cacher.finalize(&mut cache)
+    }
+
+    #[cfg(OLD)]
     fn process_item_inner(
         &mut self,
         _id: InputId,
@@ -189,10 +227,11 @@ impl Pass1Reducer {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Pass1Driver {
-    assets: String,
-    metadata_lines: Vec<String>,
+    cacher: Pass1Cacher,
+    cache: Arc<Mutex<Cache>>,
+    n_errors: usize,
 }
 
 impl WorkerDriver for Pass1Driver {
@@ -208,10 +247,15 @@ impl WorkerDriver for Pass1Driver {
 
     fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
         if let Some(rest) = record.strip_prefix("assets ") {
-            self.assets.push_str(rest);
-            self.assets.push('\n');
+            if let Err(e) = self.cacher.assets_line(rest) {
+                tt_warning!(status, "error writing asset data"; e);
+                self.n_errors += 1;
+            }
         } else if let Some(rest) = record.strip_prefix("meta ") {
-            self.metadata_lines.push(rest.to_owned());
+            if let Err(e) = self.cacher.metadata_line(rest) {
+                tt_warning!(status, "error writing meta data"; e);
+                self.n_errors += 1;
+            }
         } else {
             tt_warning!(status, "unrecognized pass1 stdout record: {}", record);
         }

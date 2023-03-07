@@ -53,11 +53,15 @@ impl TexReducer for Pass2Reducer {
         input_id
     }
 
-    fn make_worker(&mut self) -> Self::Worker {
+    fn needs_to_be_run(&mut self, id: InputId) -> Result<bool, WorkerError<Error>> {
+        Ok(true)
+    }
+
+    fn make_worker(&mut self, _id: InputId) -> Result<Self::Worker, WorkerError<Error>> {
         let rrtex = self
             .indices
             .get_resolved_reference_tex(self.input_id.unwrap());
-        Pass2Driver::new(rrtex, self.assets.clone())
+        Ok(Pass2Driver::new(rrtex, self.assets.clone()))
     }
 
     fn process_item(&mut self, id: InputId, item: Pass2Driver) -> Result<(), WorkerError<()>> {

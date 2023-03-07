@@ -1,5 +1,6 @@
 /.parcel-cache/
 /build/
+/cache/
 /dist/
 /node_modules/
 /target/
