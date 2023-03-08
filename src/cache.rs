@@ -288,9 +288,13 @@ impl SortedPersistInstanceSet {
     }
 }
 
+/// An incremental build cache manager.
 #[derive(Debug)]
 pub struct Cache {
+    /// The root directory of the cache filesystem tree.
     root: PathBuf,
+
+    /// An interner for converting file path strings into symbols.
     paths: StringInterner,
 
     /// A table of saved digest information about input files. We only populate
@@ -364,6 +368,10 @@ impl Cache {
         self.paths.get_or_intern(p)
     }
 
+    /// Convert a [`PersistEntityIdent`] to a [`RuntimeEntityIdent`].
+    ///
+    /// This needs to go through the [`Cache`] type in order to intern
+    /// the relevant strings.
     fn depersist_ident(&mut self, pei: PersistEntityIdent) -> RuntimeEntityIdent {
         match pei {
             PersistEntityIdent::SourceFile(p) => {
@@ -376,6 +384,10 @@ impl Cache {
         }
     }
 
+    /// Convert a [`RuntimeEntityIdent`] to a [`PersistEntityIdent`].
+    ///
+    /// This needs to go through the [`Cache`] type in order to resolve the
+    /// interned strings.
     fn persist_ident(&self, rei: RuntimeEntityIdent) -> PersistEntityIdent {
         match rei {
             RuntimeEntityIdent::SourceFile(s) => {
@@ -388,11 +400,99 @@ impl Cache {
         }
     }
 
+    /// Convert a [`RuntimeEntityInstance`] to a [`PersistEntityInstance`].
+    ///
+    /// This needs to go through the [`Cache`] type in order to resolve the
+    /// interned strings in the identifiers.
     fn persist_instance(&self, rei: RuntimeEntityInstance) -> PersistEntityInstance {
         PersistEntityInstance {
             ident: self.persist_ident(rei.ident),
             digest: rei.digest,
         }
+    }
+
+    /// Get a filesystem path associated with an entity in its persisted form,
+    /// if one exists.
+    ///
+    /// This needs to go through the [`Cache`] type in order to know the path to
+    /// the cache root.
+    fn persist_entity_path(&self, o: &PersistEntityIdent) -> Option<PathBuf> {
+        match o {
+            PersistEntityIdent::SourceFile(relpath) => Some(relpath.to_owned().into()),
+
+            PersistEntityIdent::IntermediateFile(relpath) => {
+                let mut p = self.root.clone();
+                p.push(relpath);
+                Some(p)
+            }
+        }
+    }
+
+    /// Get a filesystem path associated with an entity in its runtime form, if
+    /// one exists.
+    ///
+    /// This needs to go through the [`Cache`] type in order to know the path to
+    /// the cache root and to resolve any interned strings.
+    fn runtime_entity_path(&self, o: &RuntimeEntityIdent) -> Option<PathBuf> {
+        match o {
+            RuntimeEntityIdent::SourceFile(relpath) => {
+                let p = self.paths.resolve(*relpath).unwrap();
+                Some(p.to_owned().into())
+            }
+
+            RuntimeEntityIdent::IntermediateFile(relpath) => {
+                let mut p = self.root.clone();
+                p.push(self.paths.resolve(*relpath).unwrap());
+                Some(p)
+            }
+        }
+    }
+
+    /// Get a [`RuntimeEntityInstance`] from a [`RuntimeEntityIdent`], if it
+    /// resolves to a local filesystem path.
+    ///
+    /// This uses the file digest cache to hopefully load up the digest without
+    /// actually rereading the file. But if the file isn't in the cache or if it
+    /// seems to have been updated, we'll need to read it, so this function may
+    /// have to do I/O. If this identifier does not actually correspond to a
+    /// filesystem entity, the function panics.
+    fn get_file_instance(&mut self, ident: RuntimeEntityIdent) -> Result<RuntimeEntityInstance> {
+        if let Some(fentry) = self.file_digests.get(&ident) {
+            return Ok(RuntimeEntityInstance {
+                ident,
+                digest: fentry.digest.clone(),
+            });
+        }
+
+        // It's not in the active cache. Maybe it was on disk?
+        let p = self
+            .runtime_entity_path(&ident)
+            .expect("internal get_file_instance called with non-file input?");
+
+        let fentry = match self.loaded_file_digests.remove(&ident) {
+            Some(mut fentry) => {
+                atry!(
+                    fentry.freshen(&p);
+                    ["failed to probe input source file `{}`", p.display()]
+                );
+                fentry
+            }
+
+            // Nope, we need to start from scratch.
+            None => {
+                atry!(
+                    FileDigestEntry::create(&p);
+                    ["failed to probe input source file `{}`", p.display()]
+                )
+            }
+        };
+
+        self.file_digests.insert(ident.clone(), fentry.clone());
+
+        Ok(RuntimeEntityInstance {
+            ident,
+            digest: fentry.digest.clone(),
+        })
     }
 
     /// Get a "runtime entity instance" for a source file based on its path. We
@@ -403,39 +503,7 @@ impl Cache {
     fn get_source_file_instance(&mut self, p: impl AsRef<str>) -> Result<RuntimeEntityInstance> {
         let p = p.as_ref();
         let ident = RuntimeEntityIdent::SourceFile(self.intern_path(p));
-
-        if let Some(fentry) = self.file_digests.get(&ident) {
-            return Ok(RuntimeEntityInstance {
-                ident,
-                digest: fentry.digest.clone(),
-            });
-        }
-
-        // It's not in the active cache. Maybe it was on disk?
-
-        let fentry = match self.loaded_file_digests.remove(&ident) {
-            Some(mut fentry) => {
-                atry!(
-                    fentry.freshen(p);
-                    ["failed to probe input source file `{}`", p]
-                );
-                fentry
-            }
-
-            // Nope, we need to start from scratch.
-            None => {
-                atry!(
-                    FileDigestEntry::create(p);
-                    ["failed to probe input source file `{}`", p]
-                )
-            }
-        };
-
-        self.file_digests.insert(ident.clone(), fentry.clone());
-        return Ok(RuntimeEntityInstance {
-            ident,
-            digest: fentry.digest.clone(),
-        });
+        self.get_file_instance(ident)
     }
 
     /// Like [`Self::get_source_file_instance`], but always read the file in
@@ -456,16 +524,26 @@ impl Cache {
         });
     }
 
-    fn cache_path(&self, dd: &DigestData, ext: &str) -> PathBuf {
+    /// Generate a path within the cache tree based on a digest, optionally
+    /// creating its containing directory.
+    ///
+    /// This operation is only fallible if *create* is true.
+    fn cache_path(&self, dd: &DigestData, ext: &str, create: bool) -> Result<PathBuf> {
         let mut p = self.root.clone();
         let dd_hex = format!("{dd:x}.{ext}");
         p.push(&dd_hex[..2]);
+
+        atry!(
+            fs::create_dir_all(&p);
+            ["failed to create directory tree `{}`", p.display()]
+        );
+
         p.push(&dd_hex[2..]);
-        p
+        Ok(p)
     }
 
     fn load_instances(&mut self, dd: &DigestData) -> Result<Vec<PersistEntityInstance>> {
-        let p = self.cache_path(dd, "insts");
+        let p = self.cache_path(dd, "insts", false).unwrap();
 
         let f = match fs::File::open(&p) {
             Ok(f) => f,
@@ -486,14 +564,7 @@ impl Cache {
     ) -> Result<()> {
         let v: Vec<PersistEntityInstance> = insts.into_iter().collect();
 
-        let p = self.cache_path(dd, "insts");
-
-        if let Some(dir) = p.parent() {
-            atry!(
-                fs::create_dir_all(dir);
-                ["failed to create directory tree `{}`", dir.display()]
-            );
-        }
+        let p = self.cache_path(dd, "insts", true)?;
 
         let f = atry!(
             fs::File::create(&p);
@@ -524,37 +595,6 @@ impl Cache {
         }
 
         dc.finalize()
-    }
-
-    /// Get a filesystem path associated with an entity in its persisted form,
-    /// if one exists.
-    fn persist_entity_path(&self, o: &PersistEntityIdent) -> Option<PathBuf> {
-        match o {
-            PersistEntityIdent::SourceFile(relpath) => Some(relpath.to_owned().into()),
-
-            PersistEntityIdent::IntermediateFile(relpath) => {
-                let mut p = self.root.clone();
-                p.push(relpath);
-                Some(p)
-            }
-        }
-    }
-
-    /// Get a filesystem path associated with an entity in its runtime form,
-    /// if one exists.
-    fn runtime_entity_path(&self, o: &RuntimeEntityIdent) -> Option<PathBuf> {
-        match o {
-            RuntimeEntityIdent::SourceFile(relpath) => {
-                let p = self.paths.resolve(*relpath).unwrap();
-                Some(p.to_owned().into())
-            }
-
-            RuntimeEntityIdent::IntermediateFile(relpath) => {
-                let mut p = self.root.clone();
-                p.push(self.paths.resolve(*relpath).unwrap());
-                Some(p)
-            }
-        }
     }
 
     /// Test whether the output of a build operation exists.
@@ -614,7 +654,10 @@ impl Cache {
         // If the cache record for this operation doesn't exist, we must rerun
         // the operation.
 
-        let p_cache = self.cache_path(&self.opid_digest(&opid), "op");
+        let p_cache = self
+            .cache_path(&self.opid_digest(&opid), "op", false)
+            .unwrap();
+
         let mut f_cache = match fs::File::open(&p_cache) {
             Ok(f) => f,
             Err(e) => {
@@ -859,14 +902,7 @@ impl Pass1Cacher {
 
         // Create the cache file.
 
-        let p_cache = cache.cache_path(&cache.opid_digest(&self.opid), "op");
-
-        if let Some(dir) = p_cache.parent() {
-            atry!(
-                fs::create_dir_all(dir);
-                ["failed to create directory tree `{}`", dir.display()]
-            );
-        }
+        let p_cache = cache.cache_path(&cache.opid_digest(&self.opid), "op", true)?;
 
         let mut f_cache = atry!(
             fs::File::create(&p_cache);
