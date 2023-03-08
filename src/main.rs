@@ -79,7 +79,7 @@ impl BuildArgs {
 
         // Set up data structures
 
-        let cache = atry!(
+        let mut cache = atry!(
             cache::Cache::new(status);
             ["error initializing build cache"]
         );
@@ -92,8 +92,8 @@ impl BuildArgs {
 
         // First TeX pass of indexing and gathering font/asset information.
 
-        let mut p1r = pass1::Pass1Reducer::new(indices, cache);
-        let ninputs = texworker::reduce_inputs(&mut p1r, status)?;
+        let mut p1r = pass1::Pass1Reducer::new(indices);
+        let ninputs = texworker::reduce_inputs(&mut p1r, &mut cache, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
         let (_assets, _indices) = p1r.unpack();
 

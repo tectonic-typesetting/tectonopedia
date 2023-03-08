@@ -172,6 +172,15 @@ enum PersistEntityIdent {
     IntermediateFile(String),
 }
 
+impl PersistEntityIdent {
+    fn compute_digest(&self) -> DigestData {
+        let mut dc = DigestComputer::new();
+        let data = bincode::serialize(self).unwrap(); // can this ever realistically fail?
+        dc.update(data);
+        dc.finalize()
+    }
+}
+
 /// An "instance" of a build entity: a tuple of its identity and the digest of
 /// its value, as can be serialized to persistent storage.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -214,7 +223,7 @@ pub struct RuntimeEntityInstance {
 
 /// The unique identifier for a build operation that we might wish to execute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OperationIdent {
+pub enum OpIdent {
     /// A "pass 1" TeX build.
     ///
     /// The symbol resolves to the relative path of its main input file.
@@ -595,18 +604,22 @@ impl Cache {
         Ok(())
     }
 
-    fn opid_digest(&self, opid: &OperationIdent) -> DigestData {
+    /// Turn an [`OpIdent`] into a digest.
+    ///
+    /// This needs the cache to resolve interned symbols associated with the
+    /// ident.
+    fn opid_digest(&self, opid: &OpIdent) -> DigestData {
         let mut dc = DigestComputer::new();
 
         match opid {
-            OperationIdent::Pass1Build(inp) => {
+            OpIdent::Pass1Build(inp) => {
                 // Bump the version number if the nature of the pass-1 operation
                 // changes such that we should discard all cached results.
                 dc.update("pass1_v1");
                 dc.update(self.paths.resolve(*inp).unwrap());
             }
 
-            OperationIdent::Pass2Build(inp) => {
+            OpIdent::Pass2Build(inp) => {
                 dc.update("pass2_v1");
                 dc.update(self.paths.resolve(*inp).unwrap());
             }
@@ -646,8 +659,22 @@ impl Cache {
         }
     }
 
-    /// Returns true if the pass-1 build stage needs to be run for the given
-    /// input file.
+    /// Make an [`OpCacheData`] for a TeX pass-1 operation.
+    ///
+    /// This generates the op-id and sets the "source input" field.
+    pub fn make_pass1_cache_data(&mut self, input_relpath: impl AsRef<str>) -> Result<OpCacheData> {
+        let input_relpath = input_relpath.as_ref();
+        let opid = OpIdent::Pass1Build(self.intern_path(input_relpath));
+        let mut data = OpCacheData::new(opid);
+        let src_input = self.make_source_file_instance(input_relpath)?;
+        data.set_src_input(src_input);
+        Ok(data)
+    }
+
+    /// Returns true if the specified operation needs to be rerun.
+    ///
+    /// The input cache data should have been set up information about the
+    /// expected inputs to the "runtime" form of the operation.
     ///
     /// The build can be skipped if implementation of the operation is unchanged
     /// (which will almost always be the case); the inputs to the operation are
@@ -660,20 +687,16 @@ impl Cache {
     /// I/O errors relating to the cache data will be reported to the status
     /// backend but not exposed up the call chain, to try to keep things robust
     /// even if something funny happens in the cache.
-    pub fn input_needs_pass1(
+    pub fn operation_needs_rerun(
         &mut self,
-        input_relpath: &str,
+        data: &OpCacheData,
         status: &mut dyn StatusBackend,
     ) -> Result<bool> {
-        // Construct the operation identifier.
-
-        let opid = OperationIdent::Pass1Build(self.intern_path(input_relpath));
-
         // If the cache record for this operation doesn't exist, we must rerun
         // the operation.
 
         let p_cache = self
-            .cache_path(&self.opid_digest(&opid), "op", false)
+            .cache_path(&self.opid_digest(&data.opid), "op", false)
             .unwrap();
 
         let mut f_cache = match fs::File::open(&p_cache) {
@@ -696,18 +719,21 @@ impl Cache {
 
         let mut inputs = SortedPersistInstanceSet::default();
 
-        let inp_digest = self.get_source_file_instance(input_relpath)?;
-        inputs.insert_by_runtime_instance(inp_digest, self);
+        if let Some(src_input) = data.src_input.as_ref() {
+            inputs.insert_by_runtime_instance(src_input.clone(), self);
 
-        let eid = extra_inputs_digest(input_relpath);
-        let mut extra_inputs = atry!(
-            self.load_instances(&eid);
-            ["error loading extra input data for `{input_relpath}`"]
-        );
+            let eid = self.persist_ident(src_input.ident).compute_digest();
+            let mut extra_inputs = atry!(
+                self.load_instances(&eid);
+                ["error loading extra input data for `{src_input:?}`"]
+            );
 
-        for pei in extra_inputs.drain(..) {
-            inputs.insert_by_instance(pei);
+            for pei in extra_inputs.drain(..) {
+                inputs.insert_by_instance(pei);
+            }
         }
+
+        // TODO: additional non-"extra" inputs! (?)
 
         let actual_input_digest = inputs.compute_digest();
 
@@ -746,13 +772,70 @@ impl Cache {
 
         Ok(false)
     }
-}
 
-fn extra_inputs_digest(input_relpath: &str) -> DigestData {
-    let mut dc = DigestComputer::new();
-    dc.update("extra_inputs");
-    dc.update(input_relpath);
-    dc.finalize()
+    /// Mark an operation as complete and cache its information so that we can
+    /// know whether it needs to be rerun in the future.
+    ///
+    /// The cache file is created using a temporary file and an atomic rename so
+    /// that partially-complete files are not observed.
+    pub fn finalize_operation(&mut self, mut data: OpCacheData) -> Result<()> {
+        // Start creating the cache file.
+
+        let p_cache = self.cache_path(&self.opid_digest(&data.opid), "op", true)?;
+
+        let mut f_cache = atry!(
+            NamedTempFile::new_in(&self.root);
+            ["failed to create temporary file `{}`", self.root.display()]
+        );
+
+        // If a "source input" is defined, save the extra inputs for future
+        // steps involving the same input.
+
+        if let Some(src_input) = data.src_input {
+            let eid = self.persist_ident(src_input.ident).compute_digest();
+            atry!(
+                self.save_instances(&eid, data.extra_inputs.as_instances());
+                ["error saving extra input data for `{src_input:?}`"]
+            );
+
+            // Now add this to the extra_inputs, which we're about to use for
+            // computing the total input hash.
+            data.extra_inputs
+                .insert_by_runtime_instance(src_input, self);
+        }
+
+        // Compute the total hash of all of the inputs and save it in the cache file.
+
+        let inputs_digest = data.extra_inputs.compute_digest();
+
+        atry!(
+            bincode::serialize_into(&mut f_cache, &inputs_digest);
+            ["failed to serialize bincode data into `{}`", p_cache.display()]
+        );
+
+        // Log the output identities. We don't persist digests since those aren't
+        // relevant to figuring out whether this step needs rerunning; we just need
+        // to verify that the outputs exist.
+
+        let pids: Vec<PersistEntityIdent> = data
+            .outputs
+            .iter()
+            .map(|rei| self.persist_ident(*rei))
+            .collect();
+
+        atry!(
+            bincode::serialize_into(&mut f_cache, &pids);
+            ["failed to serialize bincode data into `{}`", p_cache.display()]
+        );
+
+        // And that's it!
+
+        atry!(
+            f_cache.persist(&p_cache);
+            ["failed to persist temporary cache file to `{}`", p_cache.display()]
+        );
+        Ok(())
+    }
 }
 
 /// A helper for creating build output files that are streamed to disk.
@@ -869,123 +952,59 @@ impl io::Write for OpOutputStream {
 }
 
 #[derive(Debug)]
-pub struct Pass1Cacher {
-    opid: OperationIdent,
-    src_input: RuntimeEntityInstance,
+pub struct OpCacheData {
+    opid: OpIdent,
+    src_input: Option<RuntimeEntityInstance>,
     extra_inputs: SortedPersistInstanceSet,
-    assets: OpOutputStream,
-    metadata: OpOutputStream,
+    outputs: Vec<RuntimeEntityIdent>,
 }
 
-impl Pass1Cacher {
-    pub fn new(input_relpath: impl AsRef<str>, cache: &mut Cache) -> Result<Self> {
-        let input_relpath = input_relpath.as_ref();
-        let opid = OperationIdent::Pass1Build(cache.intern_path(input_relpath));
-
-        let src_input = cache.make_source_file_instance(input_relpath)?;
-        let extra_inputs = Default::default();
-
-        let stripped = input_relpath.strip_suffix(".tex").unwrap_or(input_relpath);
-        let assets = OpOutputStream::new_intermediate(&format!("pass1/{stripped}.assets"), cache)?;
-        let metadata = OpOutputStream::new_intermediate(&format!("pass1/{stripped}.meta"), cache)?;
-
-        Ok(Pass1Cacher {
+impl OpCacheData {
+    /// Create a new cacher for this operation.
+    pub fn new(opid: OpIdent) -> Self {
+        OpCacheData {
             opid,
-            src_input,
-            extra_inputs,
-            assets,
-            metadata,
-        })
+            src_input: None,
+            extra_inputs: Default::default(),
+            outputs: Default::default(),
+        }
     }
 
-    pub fn metadata_line(&mut self, line: impl AsRef<str>) -> Result<()> {
-        Ok(atry!(
-            writeln!(&mut self.metadata, "{}", line.as_ref());
-            ["error writing to `{}`", self.metadata.display_path()]
-        ))
+    /// Set the "source input" for this operation.
+    ///
+    /// If specified, any "extra inputs" added with
+    /// [`Self::add_extra_input_source_file`] will be logged as associated with
+    /// this particular input. Future runs of this build operation, and any
+    /// other build operations *also* associated with this source input, will be
+    /// rerun if any of these files change. This allows us to dynamically add
+    /// build dependencies discovered while evaluating input files (e.g., a TeX
+    /// file depends on a PNG file; we can't know that in advance, but once we
+    /// have done a build, if the PNG file changes, we should rebuild
+    /// appropriately).
+    pub fn set_src_input(&mut self, inst: RuntimeEntityInstance) -> &mut Self {
+        self.src_input = Some(inst);
+        self
     }
 
-    pub fn assets_line(&mut self, line: impl AsRef<str>) -> Result<()> {
-        Ok(atry!(
-            writeln!(&mut self.assets, "{}", line.as_ref());
-            ["error writing to `{}`", self.assets.display_path()]
-        ))
-    }
-
-    pub fn add_extra_source_file_input(
+    /// Register an "extra input" to be associated with this operation's "source
+    /// input".
+    ///
+    /// See [`Self::set_src_input`].
+    pub fn add_extra_input_source_file(
         &mut self,
         relpath: impl AsRef<str>,
         cache: &mut Cache,
-    ) -> Result<()> {
+    ) -> Result<&mut Self> {
         let inst = cache.get_source_file_instance(relpath.as_ref())?;
         self.extra_inputs.insert_by_runtime_instance(inst, cache);
-        Ok(())
+        Ok(self)
     }
 
-    /// Mark the operation as complete and cache its information so that we can
-    /// know whether it needs to be rerun in the future.
+    /// Register an output that is associated with this operation.
     ///
-    /// The cache file is created using a temporary file and an atomic rename so
-    /// that partially-complete files are not observed.
-    pub fn finalize(self, cache: &mut Cache) -> Result<()> {
-        // Close out the output files.
-
-        let assets = self.assets.close(cache)?;
-        let metadata = self.metadata.close(cache)?;
-
-        // Start creating the cache file.
-
-        let p_cache = cache.cache_path(&cache.opid_digest(&self.opid), "op", true)?;
-
-        let mut f_cache = atry!(
-            NamedTempFile::new_in(&cache.root);
-            ["failed to create temporary file `{}`", cache.root.display()]
-        );
-
-        // Save the extra inputs for future steps involving the same input TeX
-        // file.
-
-        let input_relpath = match self.src_input.ident {
-            RuntimeEntityIdent::SourceFile(s) => cache.paths.resolve(s).unwrap().to_owned(),
-            _ => unreachable!(),
-        };
-
-        let eid = extra_inputs_digest(&input_relpath);
-        atry!(
-            cache.save_instances(&eid, self.extra_inputs.as_instances());
-            ["error saving extra input data for `{input_relpath}`"]
-        );
-
-        // Compute the total hash of all of the inputs and save it in the cache file.
-
-        let mut inputs = self.extra_inputs;
-        inputs.insert_by_runtime_instance(self.src_input, cache);
-        let inputs_digest = inputs.compute_digest();
-
-        atry!(
-            bincode::serialize_into(&mut f_cache, &inputs_digest);
-            ["failed to serialize bincode data into `{}`", p_cache.display()]
-        );
-
-        // Log the output identities. We don't persist digests since those aren't
-        // relevant to figuring out whether this step needs rerunning; we just need
-        // to verify that the outputs exist.
-
-        let mut outputs: Vec<PersistEntityIdent> = Vec::with_capacity(2);
-        outputs.push(cache.persist_ident(assets.ident));
-        outputs.push(cache.persist_ident(metadata.ident));
-
-        atry!(
-            bincode::serialize_into(&mut f_cache, &outputs);
-            ["failed to serialize bincode data into `{}`", p_cache.display()]
-        );
-
-        // And that's it!
-
-        atry!(
-            f_cache.persist(&p_cache);
-            ["failed to persist temporary cache file to `{}`", p_cache.display()]
-        );
-        Ok(())
+    /// Note that only the output identity is needed, not its full instance.
+    pub fn add_output(&mut self, ident: RuntimeEntityIdent) -> &mut Self {
+        self.outputs.push(ident);
+        self
     }
 }

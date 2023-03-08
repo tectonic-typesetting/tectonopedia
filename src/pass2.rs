@@ -23,6 +23,7 @@ use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
+    cache::{Cache, OpCacheData},
     gtry,
     index::{IndexCollection, IndexId},
     metadata::Metadatum,
@@ -45,26 +46,36 @@ pub struct Pass2Reducer {
 impl TexReducer for Pass2Reducer {
     type Worker = Pass2Driver;
 
-    fn assign_input_id(&mut self, input_name: String) -> InputId {
-        let input_id = self
+    fn set_up_operation(
+        &mut self,
+        input_relpath: String,
+        _cache: &mut Cache,
+    ) -> Result<(InputId, OpCacheData), WorkerError<Error>> {
+        let _id = self
             .indices
-            .reference_by_id(self.inputs_index_id, input_name);
-        self.input_id = Some(input_id);
-        input_id
+            .reference_by_id(self.inputs_index_id, input_relpath);
+
+        unreachable!()
     }
 
-    fn needs_to_be_run(&mut self, id: InputId) -> Result<bool, WorkerError<Error>> {
-        Ok(true)
-    }
-
-    fn make_worker(&mut self, _id: InputId) -> Result<Self::Worker, WorkerError<Error>> {
+    fn make_worker(
+        &mut self,
+        _id: InputId,
+        _ocd: OpCacheData,
+        _cache: &mut Cache,
+    ) -> Result<Self::Worker, WorkerError<Error>> {
         let rrtex = self
             .indices
             .get_resolved_reference_tex(self.input_id.unwrap());
         Ok(Pass2Driver::new(rrtex, self.assets.clone()))
     }
 
-    fn process_item(&mut self, id: InputId, item: Pass2Driver) -> Result<(), WorkerError<()>> {
+    fn process_item(
+        &mut self,
+        id: InputId,
+        item: Pass2Driver,
+        _scache: &mut Cache,
+    ) -> Result<(), WorkerError<()>> {
         let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
         let mut status = WorkerStatusBackend::new(input_path);
 

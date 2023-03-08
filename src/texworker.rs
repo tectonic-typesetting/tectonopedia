@@ -19,7 +19,11 @@ use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use threadpool::ThreadPool;
 use walkdir::DirEntry;
 
-use crate::{worker_status::WorkerStatusBackend, InputId};
+use crate::{
+    cache::{Cache, OpCacheData},
+    worker_status::WorkerStatusBackend,
+    InputId,
+};
 
 #[derive(Debug)]
 pub enum WorkerError<T> {
@@ -124,7 +128,7 @@ pub trait WorkerDriver: Send {
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
     ///
-    /// *entry* is the information about hte input file. *task_num* is index
+    /// *entry* is the information about the input file. *task_num* is index
     /// number of this particular processing task.
     fn init_command(&self, cmd: &mut Command, entry: &DirEntry, task_num: usize);
 
@@ -235,16 +239,25 @@ pub trait TexReducer {
     /// `Item` type is returned to the main thread.
     type Worker: WorkerDriver + 'static;
 
-    /// Assign an opaque input identifier to an input that is to be processed.
+    /// Assign an opaque input identifier to an input that is to be processed,
+    /// and et up the operation associated with this task, which will let us
+    /// decide if actually needs to be run or not.
+    ///
     /// This function is called in the main thread.
-    fn assign_input_id(&mut self, input_name: String) -> InputId;
-
-    /// Can we skip this input?
-    fn needs_to_be_run(&mut self, id: InputId) -> Result<bool, WorkerError<Error>>;
+    fn set_up_operation(
+        &mut self,
+        input_name: String,
+        cache: &mut Cache,
+    ) -> Result<(InputId, OpCacheData), WorkerError<Error>>;
 
     /// Create a worker object. This function is called in the main thread. The
     /// worker will be sent to a worker thread and then drive a TeX subprocess.
-    fn make_worker(&mut self, id: InputId) -> Result<Self::Worker, WorkerError<Error>>;
+    fn make_worker(
+        &mut self,
+        id: InputId,
+        ocd: OpCacheData,
+        cache: &mut Cache,
+    ) -> Result<Self::Worker, WorkerError<Error>>;
 
     /// This function must print out any error if one is encountered. Due to the
     /// parallelization approach, the returned result can indicate error
@@ -253,10 +266,15 @@ pub trait TexReducer {
         &mut self,
         id: InputId,
         item: <Self::Worker as WorkerDriver>::Item,
+        cache: &mut Cache,
     ) -> Result<(), WorkerError<()>>;
 }
 
-pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend) -> Result<usize> {
+pub fn reduce_inputs<R: TexReducer>(
+    red: &mut R,
+    cache: &mut Cache,
+    status: &mut dyn StatusBackend,
+) -> Result<usize> {
     let self_path = atry!(
         std::env::current_exe();
         ["cannot obtain the path to the current executable"]
@@ -275,13 +293,8 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
             ["error while walking input tree"]
         );
 
-        let tx = tx.clone();
-        let sp = self_path.clone();
-        let id = red.assign_input_id(entry.path().display().to_string());
-
-        // FIX ME
-        let needs = match red.needs_to_be_run(id) {
-            Ok(d) => d,
+        let maybe_info = match reduce_input_prep(red, &entry, cache, status) {
+            Ok(w) => w,
 
             Err(WorkerError::General(e)) => {
                 n_failures += 1;
@@ -300,44 +313,25 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
             }
         };
 
-        if !needs {
-            tt_warning!(status, "skipping input `{}`!!!", entry.path().display());
+        if let Some((id, driver)) = maybe_info {
+            let tx = tx.clone();
+            let sp = self_path.clone();
+
+            pool.execute(move || {
+                tx.send(process_one_input(driver, sp, entry, id, n_tasks))
+                    .expect("channel waits for pool result");
+            });
+            n_tasks += 1;
+        } else {
+            // We can use the cached results for this task.
             continue;
         }
-
-        // Weakness here: we really ought to have an input-specific status object
-        // for reporting this
-        let driver = match red.make_worker(id) {
-            Ok(d) => d,
-
-            Err(WorkerError::General(e)) => {
-                n_failures += 1;
-                tt_error!(status, "setup failed for input `{}`; giving up early", entry.path().display(); e);
-                break; // give up
-            }
-
-            Err(WorkerError::Specific(e)) => {
-                // TODO: if, say, 3 of the first 5 builds fail, give up
-                // the whole shebang, under the assumption that
-                // something is messed up that will break all of the
-                // builds.
-                n_failures += 1;
-                tt_error!(status, "setup failed for input `{}`; trying others", entry.path().display(); e);
-                continue;
-            }
-        };
-
-        pool.execute(move || {
-            tx.send(process_one_input(driver, sp, entry, id, n_tasks))
-                .expect("channel waits for pool result");
-        });
-        n_tasks += 1;
 
         // Deal with results as we're doing the walk, if there are any.
 
         match rx.try_recv() {
             Ok(result) => {
-                match result.and_then(|t| red.process_item(t.0, t.1)) {
+                match result.and_then(|t| red.process_item(t.0, t.1, cache)) {
                     Ok(_) => {}
 
                     Err(WorkerError::General(_)) => {
@@ -363,7 +357,10 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
     drop(tx);
 
     for result in rx.iter() {
-        if result.and_then(|t| red.process_item(t.0, t.1)).is_err() {
+        if result
+            .and_then(|t| red.process_item(t.0, t.1, cache))
+            .is_err()
+        {
             // At this point, we've already launched everything, so we can't
             // give up early anymore; and the child process or inner callback
             // should have displayed the error.
@@ -379,4 +376,21 @@ pub fn reduce_inputs<R: TexReducer>(red: &mut R, status: &mut dyn StatusBackend)
     );
 
     Ok(n_tasks)
+}
+
+fn reduce_input_prep<R: TexReducer>(
+    red: &mut R,
+    entry: &DirEntry,
+    cache: &mut Cache,
+    status: &mut dyn StatusBackend,
+) -> Result<Option<(InputId, R::Worker)>, WorkerError<Error>> {
+    let (id, ocd) = red.set_up_operation(entry.path().display().to_string(), cache)?;
+
+    if !stry!(cache.operation_needs_rerun(&ocd, status)) {
+        tt_warning!(status, "skipping input `{}`!!!", entry.path().display());
+        return Ok(None);
+    }
+
+    let driver = red.make_worker(id, ocd, cache)?;
+    Ok(Some((id, driver)))
 }
