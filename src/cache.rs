@@ -10,14 +10,14 @@
 //!
 //! The key concepts are as follows:
 //!
-//! - A **digest** is a cryptographic digest of some byte sequence. Changes in
-//!   dependencies are detected by searching for changes in their digests.
 //! - An **entity** is some thing that is a potential input or output of a build
 //!   operation. Most entities correspond to files on the filesystem, but other
 //!   entity types are possible (e.g., a build operation might depend on an
 //!   environment variable, in the sense that the operation might produce a
-//!   different output if the variable changes). Each entity has an
-//!   **identity**, which uniquely identifies it.
+//!   different output if the variable changes).
+//! - An **identity** uniquely identifies an entity.
+//! - A **digest** is a cryptographic digest of some byte sequence. Changes in
+//!   entities are detected by searching for changes in their digests.
 //! - An **instance** of an entity is a combination of its identity and a
 //!   **digest** representing its value.
 //! - An **operation** is a build operation that generates output entities from
@@ -48,14 +48,14 @@ use crate::config;
 /// A type that we'll use to compute data digests for change detection.
 ///
 /// This is currently [`sha2::Sha256`].
-pub type DigestComputer = Sha256;
+type DigestComputer = Sha256;
 
 /// The data type emitted by [`DigestComputer`].
 ///
 /// This is a particular form of [`generic_array::GenericArray`] with a [`u8`]
 /// data type and a size appropriate to the digest. For the current SHA256
 /// implementation, that's 32 bytes.
-pub type DigestData = GenericArray<u8, <DigestComputer as OutputSizeUser>::OutputSize>;
+type DigestData = GenericArray<u8, <DigestComputer as OutputSizeUser>::OutputSize>;
 
 /// A [`string_interner`] symbol used by the [`Cache`] interner for paths.
 type PathSymbol = DefaultSymbol;
@@ -66,7 +66,7 @@ type PathSymbol = DefaultSymbol;
 /// slow to recalculate the digest of their contents every time we needed to
 /// check if they've changed. So, we do what virtually every other build system
 /// does, and we cache file digests based on their filesystem metadata,
-/// specifically modification times and sizes. If a files mtime and size are
+/// specifically modification times and sizes. If a file's mtime and size are
 /// what we have in our cache, we assume that its digest is as well.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 struct FileDigestEntry {
@@ -91,7 +91,7 @@ fn digest_of_file(p: impl AsRef<Path>) -> Result<(u64, DigestData)> {
 impl FileDigestEntry {
     /// Create an entirely new file digest cache entry by reading the whole
     /// file.
-    pub fn create(p: impl AsRef<Path>) -> Result<FileDigestEntry> {
+    fn create(p: impl AsRef<Path>) -> Result<FileDigestEntry> {
         let p = p.as_ref();
         let md = fs::metadata(p)?;
         let mtime = md.modified()?;
@@ -110,7 +110,7 @@ impl FileDigestEntry {
     /// If the mtime and size of the file at the specified path are the same as
     /// what's been saved, assume that the file is unchanged and we don't need
     /// to update the digest. Otherwise, recalculate the digest.
-    pub fn freshen(&mut self, p: impl AsRef<Path>) -> Result<()> {
+    fn freshen(&mut self, p: impl AsRef<Path>) -> Result<()> {
         // TODO: do we need to do something special for ENOENT here?
         let p = p.as_ref();
         let md = fs::metadata(p)?;
@@ -134,7 +134,7 @@ impl FileDigestEntry {
     /// between close and the execution of this function in a way that means
     /// that our digest will actually be wrong, even though the size is the
     /// same.
-    pub fn create_for_known(
+    fn create_for_known(
         p: impl AsRef<Path>,
         digest: DigestData,
         size: u64,
@@ -186,10 +186,10 @@ impl PersistEntityIdent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct PersistEntityInstance {
     /// The identity of the entity associated with this instance.
-    pub ident: PersistEntityIdent,
+    ident: PersistEntityIdent,
 
     /// The digest of the entity associated with this instance.
-    pub digest: DigestData,
+    digest: DigestData,
 }
 
 /// The unique identifier of a logical entity that can be an input or an output
@@ -223,7 +223,7 @@ pub struct RuntimeEntityInstance {
 
 /// The unique identifier for a build operation that we might wish to execute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OpIdent {
+enum OpIdent {
     /// A "pass 1" TeX build.
     ///
     /// The symbol resolves to the relative path of its main input file.
@@ -243,14 +243,14 @@ pub enum OpIdent {
 /// will calculate the same overall digest even if the runtime load patterns
 /// differ.
 #[derive(Clone, Debug, Default)]
-pub struct SortedPersistInstanceSet(BTreeMap<PersistEntityIdent, DigestData>);
+struct SortedPersistInstanceSet(BTreeMap<PersistEntityIdent, DigestData>);
 
 impl SortedPersistInstanceSet {
     /// Insert a new entry into the set, based on its runtime identifier.
     ///
     /// If the identifier was already in the set, the previously associated
     /// digest is returned.
-    pub fn insert_by_runtime_instance(
+    fn insert_by_runtime_instance(
         &mut self,
         inst: RuntimeEntityInstance,
         cache: &Cache,
@@ -277,7 +277,7 @@ impl SortedPersistInstanceSet {
     /// This does *not* include the input identies in the digest calculation. So
     /// the digest of a set containing one source file will be the same as the
     /// digest of a set containing a different file with identical contents.
-    pub fn compute_digest(&self) -> DigestData {
+    fn compute_digest(&self) -> DigestData {
         let mut dc = DigestComputer::new();
 
         for digest in self.0.values() {
@@ -961,7 +961,7 @@ pub struct OpCacheData {
 
 impl OpCacheData {
     /// Create a new cacher for this operation.
-    pub fn new(opid: OpIdent) -> Self {
+    fn new(opid: OpIdent) -> Self {
         OpCacheData {
             opid,
             src_input: None,
