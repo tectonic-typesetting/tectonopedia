@@ -240,18 +240,28 @@ pub trait TexReducer {
     type Worker: WorkerDriver + 'static;
 
     /// Assign an opaque input identifier to an input that is to be processed,
-    /// and et up the operation associated with this task, which will let us
+    /// and set up the operation associated with this task, which will let us
     /// decide if actually needs to be run or not.
     ///
-    /// This function is called in the main thread.
+    /// This function is called in the main thread. It needs to interact with
+    /// the cache to do things like load up "extra inputs" that tell us which
+    /// additional files we should check for changes to know if the operation
+    /// should be rerun.
     fn set_up_operation(
         &mut self,
         input_name: String,
         cache: &mut Cache,
     ) -> Result<(InputId, OpCacheData), WorkerError<Error>>;
 
-    /// Create a worker object. This function is called in the main thread. The
-    /// worker will be sent to a worker thread and then drive a TeX subprocess.
+    /// Create a worker object.
+    ///
+    /// This function is called in the main thread. The worker will be sent to a
+    /// worker thread and then drive a TeX subprocess.
+    ///
+    /// The worker should almost surely take ownership of the [`OpCacheData`]
+    /// struct and use it during processing to, e.g., record "extra inputs".
+    /// This function may also need to use the cache to record output files that
+    /// will be created during the processing run.
     fn make_worker(
         &mut self,
         id: InputId,
@@ -259,9 +269,17 @@ pub trait TexReducer {
         cache: &mut Cache,
     ) -> Result<Self::Worker, WorkerError<Error>>;
 
+    /// Process the result of a TeX worker execution.
+    ///
+    /// This function is called on the main thread and given the "item" produced
+    /// be a worker invocation. It should call [`Cache::finalize_operation`] to
+    /// log information about the operation inputs and outputs so that the
+    /// operation can potentially be skipped if it doesn't need to be rerun next
+    /// time.
+    ///
     /// This function must print out any error if one is encountered. Due to the
-    /// parallelization approach, the returned result can indicate error
-    /// information but not be used to report any information.
+    /// parallelization approach used in this framework, the returned result can
+    /// indicate error information but cannot be used to report any information.
     fn process_item(
         &mut self,
         id: InputId,
