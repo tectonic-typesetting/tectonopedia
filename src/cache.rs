@@ -7,6 +7,22 @@
 //! process is fairly simple. But, the infrastructure for checking whether
 //! specific build operations need to be rerun aims to be flexible so that it
 //! can capture lots of different steps.
+//!
+//! The key concepts are as follows:
+//!
+//! - A **digest** is a cryptographic digest of some byte sequence. Changes in
+//!   dependencies are detected by searching for changes in their digests.
+//! - An **entity** is some thing that is a potential input or output of a build
+//!   operation. Most entities correspond to files on the filesystem, but other
+//!   entity types are possible (e.g., a build operation might depend on an
+//!   environment variable, in the sense that the operation might produce a
+//!   different output if the variable changes). Each entity has an
+//!   **identity**, which uniquely identifies it.
+//! - An **instance** of an entity is a combination of its identity and a
+//!   **digest** representing its value.
+//! - An **operation** is a build operation that generates output entities from
+//!   input entities. If an operation is run repeatedly with the same inputs, it
+//!   should generate the same outputs.
 
 #![allow(unused)]
 
@@ -28,21 +44,37 @@ use tectonic_status_base::{tt_warning, StatusBackend};
 
 use crate::config;
 
-/// A type t
+/// A type that we'll use to compute data digests for change detection.
+///
+/// This is currently [`sha2::Sha256`].
 pub type DigestComputer = Sha256;
+
+/// The data type emitted by [`DigestComputer`].
+///
+/// This is a particular form of [`generic_array::GenericArray`] with a [`u8`]
+/// data type and a size appropriate to the digest. For the current SHA256
+/// implementation, that's 32 bytes.
 pub type DigestData = GenericArray<u8, <DigestComputer as OutputSizeUser>::OutputSize>;
 
+/// A [`string_interner`] symbol used by the [`Cache`] interner for paths.
 type PathSymbol = DefaultSymbol;
 
-// Helper for caching file digests based on mtimes
-
+/// Helper for caching file digests based on modification times.
+///
+/// Most of our build inputs and outputs are files on disk. It would get pretty
+/// slow to recalculate the digest of their contents every time we needed to
+/// check if they've changed. So, we do what virtually every other build system
+/// does, and we cache file digests based on their filesystem metadata,
+/// specifically modification times and sizes. If a files mtime and size are
+/// what we have in our cache, we assume that its digest is as well.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 struct FileDigestEntry {
-    pub digest: DigestData,
+    digest: DigestData,
     mtime: SystemTime,
     size: u64,
 }
 
+/// Calculate the digest and size of a file, reading the whole thing.
 fn digest_of_file(p: impl AsRef<Path>) -> Result<(u64, DigestData)> {
     // We could get the file size from the filesystem metadata, but as long
     // as we have to read the whole thing, it seems better to use the size
@@ -56,6 +88,8 @@ fn digest_of_file(p: impl AsRef<Path>) -> Result<(u64, DigestData)> {
 }
 
 impl FileDigestEntry {
+    /// Create an entirely new file digest cache entry by reading the whole
+    /// file.
     pub fn create(p: impl AsRef<Path>) -> Result<FileDigestEntry> {
         let p = p.as_ref();
         let md = fs::metadata(p)?;
@@ -69,7 +103,9 @@ impl FileDigestEntry {
         })
     }
 
-    /// Make sure that the information associated with this instance is fresh.
+    /// Make sure that the information associated with this cache entry is
+    /// fresh.
+    ///
     /// If the mtime and size of the file at the specified path are the same as
     /// what's been saved, assume that the file is unchanged and we don't need
     /// to update the digest. Otherwise, recalculate the digest.
@@ -121,7 +157,10 @@ impl FileDigestEntry {
 
 /// The unique identifier of a logical entity that can be an input or an output
 /// of a build operation, as can be serialized to persistent storage.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+///
+/// See also [`RuntimeEntityIdent`], in which string values have been interned
+/// into symbols.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 enum PersistEntityIdent {
     /// A source file. The string value is the path to the file in question,
     /// relative to the project root.
@@ -136,39 +175,116 @@ enum PersistEntityIdent {
 /// its value, as can be serialized to persistent storage.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct PersistEntityInstance {
+    /// The identity of the entity associated with this instance.
     pub ident: PersistEntityIdent,
+
+    /// The digest of the entity associated with this instance.
     pub digest: DigestData,
 }
 
 /// The unique identifier of a logical entity that can be an input or an output
 /// of a build operation, as managed during runtime. String values are interned
 /// into symbols.
+///
+/// See also [`PersistEntityIdent`], in which interned string symbols have been
+/// expanded into owned strings. That type can be serialized and deserialized,
+/// whereas this type implements [`std::marker::Copy`].
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RuntimeEntityIdent {
+    /// A source file. The symbol resolves to the path to the file in question,
+    /// relative to the project root.
     SourceFile(PathSymbol),
+
+    /// An intermediate file. The symbol resolves to the path to the file in
+    /// question, relative to the cache root.
     IntermediateFile(PathSymbol),
 }
 
+/// An "instance" of a build entity: a tuple of its identity and the digest of
+/// its value, as managed during runtime.
 #[derive(Clone, Debug)]
 pub struct RuntimeEntityInstance {
+    /// The identity of the entity associated with this instance.
     pub ident: RuntimeEntityIdent,
+
+    /// The digest of the entity associated with this instance.
     pub digest: DigestData,
 }
 
 /// The unique identifier for a build operation that we might wish to execute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OperationIdent {
+pub enum OperationIdent {
+    /// A "pass 1" TeX build.
+    ///
+    /// The symbol resolves to the relative path of its main input file.
     Pass1Build(PathSymbol),
+
+    /// A "pass 2" TeX build.
+    ///
+    /// The symbol resolves to the relative path of its main input file.
     Pass2Build(PathSymbol),
 }
 
-trait Digestible {
-    fn update_digest(&self, dc: &mut DigestComputer);
+/// An ordered set of instances, keyed and sorted by their persistent
+/// identifiers.
+///
+/// These sets can be used to store and compare lists of inputs, for instance.
+/// By ordering by the persistent identifiers, different executions of the code
+/// will calculate the same overall digest even if the runtime load patterns
+/// differ.
+#[derive(Clone, Debug, Default)]
+pub struct SortedPersistInstanceSet(BTreeMap<PersistEntityIdent, DigestData>);
 
-    fn compute_digest(&self) -> DigestData {
+impl SortedPersistInstanceSet {
+    /// Insert a new entry into the set, based on its runtime identifier.
+    ///
+    /// If the identifier was already in the set, the previously associated
+    /// digest is returned.
+    pub fn insert_by_runtime_instance(
+        &mut self,
+        inst: RuntimeEntityInstance,
+        cache: &Cache,
+    ) -> Option<DigestData> {
+        let pei = cache.persist_ident(inst.ident);
+        self.0.insert(pei, inst.digest)
+    }
+
+    /// Insert a new entry into the set.
+    ///
+    /// If the identifier was already in the set, the previously associated
+    /// digest is returned.
+    fn insert_by_instance(&mut self, inst: PersistEntityInstance) -> Option<DigestData> {
+        self.0.insert(inst.ident, inst.digest)
+    }
+
+    /// Compute the digest of this set of inputs.
+    ///
+    /// This digest is computed as the digest of all of the input digests,
+    /// ordered by the persistent input identifiers. Thanks to this ordering,
+    /// the returned value should be reproducible regardless of the order in
+    /// which the inputs were added, so long as the inputs are the same.
+    ///
+    /// This does *not* include the input identies in the digest calculation. So
+    /// the digest of a set containing one source file will be the same as the
+    /// digest of a set containing a different file with identical contents.
+    pub fn compute_digest(&self) -> DigestData {
         let mut dc = DigestComputer::new();
-        self.update_digest(&mut dc);
+
+        for digest in self.0.values() {
+            dc.update(digest);
+        }
+
         dc.finalize()
+    }
+
+    /// Adapt this set into an iterator of instances.
+    ///
+    /// This clones each record in the set.
+    fn as_instances(&self) -> impl Iterator<Item = PersistEntityInstance> + '_ {
+        self.0.iter().map(|(k, v)| PersistEntityInstance {
+            ident: k.clone(),
+            digest: v.clone(),
+        })
     }
 }
 
@@ -366,12 +482,9 @@ impl Cache {
     fn save_instances(
         &mut self,
         dd: &DigestData,
-        insts: impl IntoIterator<Item = RuntimeEntityInstance>,
+        insts: impl IntoIterator<Item = PersistEntityInstance>,
     ) -> Result<()> {
-        let v: Vec<PersistEntityInstance> = insts
-            .into_iter()
-            .map(|r| self.persist_instance(r))
-            .collect();
+        let v: Vec<PersistEntityInstance> = insts.into_iter().collect();
 
         let p = self.cache_path(dd, "insts");
 
@@ -520,10 +633,10 @@ impl Cache {
         // Gather inputs: the input file, and any extra deps that we may have
         // detected in previous executions.
 
-        let mut inputs = BTreeMap::new();
+        let mut inputs = SortedPersistInstanceSet::default();
 
         let inp_digest = self.get_source_file_instance(input_relpath)?;
-        inputs.insert(inp_digest.ident, inp_digest.digest);
+        inputs.insert_by_runtime_instance(inp_digest, self);
 
         let eid = extra_inputs_digest(input_relpath);
         let mut extra_inputs = atry!(
@@ -532,7 +645,7 @@ impl Cache {
         );
 
         for pei in extra_inputs.drain(..) {
-            inputs.insert(self.depersist_ident(pei.ident), pei.digest);
+            inputs.insert_by_instance(pei);
         }
 
         let actual_input_digest = inputs.compute_digest();
@@ -579,27 +692,6 @@ fn extra_inputs_digest(input_relpath: &str) -> DigestData {
     dc.update("extra_inputs");
     dc.update(input_relpath);
     dc.finalize()
-}
-
-impl Digestible for BTreeMap<RuntimeEntityIdent, DigestData> {
-    fn update_digest(&self, dc: &mut DigestComputer) {
-        for digest in self.values() {
-            dc.update(digest);
-        }
-    }
-}
-
-/// A helper to dynamically convert one of our common BTreeMaps into an iterator
-/// of "instances". We can't do this with an extension trait since I don't want
-/// to to write this function without `impl Trait` in return position, which we
-/// can't to in a trait.
-fn runtime_btree_as_instances(
-    btree: &BTreeMap<RuntimeEntityIdent, DigestData>,
-) -> impl Iterator<Item = RuntimeEntityInstance> + '_ {
-    btree.iter().map(|(k, v)| RuntimeEntityInstance {
-        ident: k.clone(),
-        digest: v.clone(),
-    })
 }
 
 /// A helper for creating build output files that are streamed to disk.
@@ -707,7 +799,7 @@ impl io::Write for OpOutputStream {
 pub struct Pass1Cacher {
     opid: OperationIdent,
     src_input: RuntimeEntityInstance,
-    extra_inputs: BTreeMap<RuntimeEntityIdent, DigestData>,
+    extra_inputs: SortedPersistInstanceSet,
     assets: OpOutputStream,
     metadata: OpOutputStream,
 }
@@ -718,7 +810,7 @@ impl Pass1Cacher {
         let opid = OperationIdent::Pass1Build(cache.intern_path(input_relpath));
 
         let src_input = cache.make_source_file_instance(input_relpath)?;
-        let extra_inputs = BTreeMap::new();
+        let extra_inputs = Default::default();
 
         let stripped = input_relpath.strip_suffix(".tex").unwrap_or(input_relpath);
         let assets = OpOutputStream::new_intermediate(&format!("pass1/{stripped}.assets"), cache)?;
@@ -753,7 +845,7 @@ impl Pass1Cacher {
         cache: &mut Cache,
     ) -> Result<()> {
         let inst = cache.get_source_file_instance(relpath.as_ref())?;
-        self.extra_inputs.insert(inst.ident, inst.digest);
+        self.extra_inputs.insert_by_runtime_instance(inst, cache);
         Ok(())
     }
 
@@ -791,14 +883,14 @@ impl Pass1Cacher {
 
         let eid = extra_inputs_digest(&input_relpath);
         atry!(
-            cache.save_instances(&eid, runtime_btree_as_instances(&self.extra_inputs));
+            cache.save_instances(&eid, self.extra_inputs.as_instances());
             ["error saving extra input data for `{input_relpath}`"]
         );
 
         // Compute the total hash of all of the inputs and save it in the cache file.
 
         let mut inputs = self.extra_inputs;
-        inputs.insert(self.src_input.ident, self.src_input.digest);
+        inputs.insert_by_runtime_instance(self.src_input, cache);
         let inputs_digest = inputs.compute_digest();
 
         atry!(
