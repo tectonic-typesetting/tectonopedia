@@ -20,6 +20,7 @@ tectonic_bridge_core = { path = "../tectonic/crates/bridge_core" }
 tectonic_engine_spx2html = { path = "../tectonic/crates/engine_spx2html" }
 tectonic_errors = { path = "../tectonic/crates/errors" }
 tectonic_status_base = { path = "../tectonic/crates/status_base" }
+tempfile = "^3.4"
 termcolor = "^1.1"
 threadpool = "^1.8"
 toml = "^0.5"

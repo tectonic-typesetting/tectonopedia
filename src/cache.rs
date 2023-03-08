@@ -41,6 +41,7 @@ use std::{
 use string_interner::{DefaultSymbol, StringInterner};
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
+use tempfile::NamedTempFile;
 
 use crate::config;
 
@@ -542,6 +543,10 @@ impl Cache {
         Ok(p)
     }
 
+    /// Load a vector of instances from a file identified by a digest.
+    ///
+    /// This is used to load "extra inputs" associated with a given TeX file
+    /// after we have run a build and learned what external files it depends on.
     fn load_instances(&mut self, dd: &DigestData) -> Result<Vec<PersistEntityInstance>> {
         let p = self.cache_path(dd, "insts", false).unwrap();
 
@@ -557,6 +562,11 @@ impl Cache {
         ))
     }
 
+    /// Load a vector of instances into a file identified by a digest.
+    ///
+    /// This is used to save "extra inputs" associated with a given TeX file
+    /// after we have run a build and learned what external files it depends on.
+    /// The saving is done with a temporary file and an atomic rename.
     fn save_instances(
         &mut self,
         dd: &DigestData,
@@ -565,16 +575,24 @@ impl Cache {
         let v: Vec<PersistEntityInstance> = insts.into_iter().collect();
 
         let p = self.cache_path(dd, "insts", true)?;
+        let dir = p.parent().unwrap();
 
-        let f = atry!(
-            fs::File::create(&p);
-            ["failed to create file `{}`", p.display()]
+        let mut f = atry!(
+            NamedTempFile::new_in(dir);
+            ["failed to create temporary file in `{}`", dir.display()]
         );
 
-        Ok(atry!(
-            bincode::serialize_into(f, &v);
-            ["failed to serialize bincode data into `{}`", p.display()]
-        ))
+        atry!(
+            bincode::serialize_into(&mut f, &v);
+            ["failed to serialize bincode data into `{}`", f.path().display()]
+        );
+
+        atry!(
+            f.persist(&p);
+            ["failed to persist temporary file into `{}`", p.display()]
+        );
+
+        Ok(())
     }
 
     fn opid_digest(&self, opid: &OperationIdent) -> DigestData {
@@ -740,12 +758,14 @@ fn extra_inputs_digest(input_relpath: &str) -> DigestData {
 /// A helper for creating build output files that are streamed to disk.
 ///
 /// This class calculates the cryptographic digest as the data are written, so
-/// that it can be cached efficiently.
+/// that it can be cached efficiently. It also uses a temporary file with an
+/// atomic rename upon build completion so that partially-created outputs are
+/// not observed.
 #[derive(Debug)]
 pub struct OpOutputStream {
     ident: RuntimeEntityIdent,
     path: PathBuf,
-    file: fs::File,
+    file: NamedTempFile,
     dc: DigestComputer,
     size: u64,
 }
@@ -760,17 +780,23 @@ impl OpOutputStream {
         let ident = RuntimeEntityIdent::IntermediateFile(cache.intern_path(relpath));
         let path = cache.runtime_entity_path(&ident).unwrap();
 
-        if let Some(dir) = path.parent() {
+        let file = if let Some(dir) = path.parent() {
             atry!(
                 fs::create_dir_all(dir);
                 ["failed to create directory tree `{}`", dir.display()]
             );
-        }
 
-        let file = atry!(
-            fs::File::create(&path);
-            ["failed to create file `{}`", path.display()]
-        );
+            atry!(
+                NamedTempFile::new_in(dir);
+                ["failed to create temporary file `{}`", dir.display()]
+            )
+        } else {
+            // This should never happen, but might as well be paranoid.
+            atry!(
+                NamedTempFile::new();
+                ["failed to create temporary file"]
+            )
+        };
 
         let dc = DigestComputer::new();
 
@@ -797,9 +823,13 @@ impl OpOutputStream {
             ["failed to flush file `{}`", self.path.display()]
         );
 
-        std::mem::drop(self.file);
-
         let path = self.path;
+
+        atry!(
+            self.file.persist(&path);
+            ["failed to persist temporary file to `{}`", path.display()]
+        );
+
         let digest = self.dc.finalize();
 
         // Make sure we have a nice fresh cache record for this new file, whose
@@ -894,19 +924,22 @@ impl Pass1Cacher {
 
     /// Mark the operation as complete and cache its information so that we can
     /// know whether it needs to be rerun in the future.
+    ///
+    /// The cache file is created using a temporary file and an atomic rename so
+    /// that partially-complete files are not observed.
     pub fn finalize(self, cache: &mut Cache) -> Result<()> {
         // Close out the output files.
 
         let assets = self.assets.close(cache)?;
         let metadata = self.metadata.close(cache)?;
 
-        // Create the cache file.
+        // Start creating the cache file.
 
         let p_cache = cache.cache_path(&cache.opid_digest(&self.opid), "op", true)?;
 
         let mut f_cache = atry!(
-            fs::File::create(&p_cache);
-            ["failed to create build cache file `{}`", p_cache.display()]
+            NamedTempFile::new_in(&cache.root);
+            ["failed to create temporary file `{}`", cache.root.display()]
         );
 
         // Save the extra inputs for future steps involving the same input TeX
@@ -950,8 +983,8 @@ impl Pass1Cacher {
         // And that's it!
 
         atry!(
-            f_cache.flush();
-            ["failed to flush file `{}`", p_cache.display()]
+            f_cache.persist(&p_cache);
+            ["failed to persist temporary cache file to `{}`", p_cache.display()]
         );
         Ok(())
     }
