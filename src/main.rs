@@ -7,9 +7,9 @@ use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
+mod cache;
 mod config;
 mod holey_vec;
-mod incremental;
 mod index;
 mod inputs;
 mod metadata;
@@ -80,7 +80,7 @@ impl BuildArgs {
         // Set up data structures
 
         let cache = atry!(
-            incremental::Cache::new(status);
+            cache::Cache::new(status);
             ["error initializing build cache"]
         );
         let mut indices = index::IndexCollection::default();

@@ -22,8 +22,8 @@ use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use walkdir::DirEntry;
 
 use crate::{
+    cache::{Cache, Pass1Cacher},
     gtry,
-    incremental::{Cache, Pass1Cacher},
     index::{IndexCollection, IndexId},
     //index::{EntryText, IndexCollection, IndexId, IndexRef},
     //metadata::Metadatum,
