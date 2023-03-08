@@ -1,7 +1,12 @@
 // Copyright 2023 the Tectonic Project
 // Licensed under the MIT License
 
-//! Infrastructure for incremental builds.
+//! Caching infrastructure for incremental builds.
+//!
+//! We don't try to implement a full dependency graph structure since our build
+//! process is fairly simple. But, the infrastructure for checking whether
+//! specific build operations need to be rerun aims to be flexible so that it
+//! can capture lots of different steps.
 
 #![allow(unused)]
 
@@ -23,6 +28,7 @@ use tectonic_status_base::{tt_warning, StatusBackend};
 
 use crate::config;
 
+/// A type t
 pub type DigestComputer = Sha256;
 pub type DigestData = GenericArray<u8, <DigestComputer as OutputSizeUser>::OutputSize>;
 
@@ -316,8 +322,8 @@ impl Cache {
         });
     }
 
-    /// Like [`get_source_file_instance`], but always read the file in question
-    /// to calculate its digest.
+    /// Like [`Self::get_source_file_instance`], but always read the file in
+    /// question to calculate its digest.
     fn make_source_file_instance(&mut self, p: impl AsRef<str>) -> Result<RuntimeEntityInstance> {
         let p = p.as_ref();
         let ident = RuntimeEntityIdent::SourceFile(self.intern_path(p));

@@ -112,8 +112,8 @@ macro_rules! stry {
 ///
 /// This type is created in the primary thread and sent to one of the threadpool
 /// worker threads. In that worker thread, it then interacts closely with the
-/// TeX subprocess. Once that subprocess exits, it is consumed, and its [`Item`]
-/// value is then sent back to the main thread.
+/// TeX subprocess. Once that subprocess exits, it is consumed, and its
+/// [`Self::Item`] value is then sent back to the main thread.
 pub trait WorkerDriver: Send {
     /// The type that will be returned to the driver thread.
     ///
