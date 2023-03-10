@@ -734,7 +734,9 @@ impl Cache {
             }
         }
 
-        // TODO: additional non-"extra" inputs! (?)
+        for input in &data.general_inputs {
+            inputs.insert_by_runtime_instance(input.clone(), self);
+        }
 
         let actual_input_digest = inputs.compute_digest();
 
@@ -805,7 +807,12 @@ impl Cache {
                 .insert_by_runtime_instance(src_input, self);
         }
 
-        // Compute the total hash of all of the inputs and save it in the cache file.
+        // Compute the total hash of all of the inputs and save it in the cache
+        // file. Here we (ab)use data.extra_inputs as a nice sorted list.
+
+        for input in data.general_inputs.drain(..) {
+            data.extra_inputs.insert_by_runtime_instance(input, self);
+        }
 
         let inputs_digest = data.extra_inputs.compute_digest();
 
@@ -956,6 +963,7 @@ impl io::Write for OpOutputStream {
 pub struct OpCacheData {
     opid: OpIdent,
     src_input: Option<RuntimeEntityInstance>,
+    general_inputs: Vec<RuntimeEntityInstance>,
     extra_inputs: SortedPersistInstanceSet,
     outputs: Vec<RuntimeEntityIdent>,
 }
@@ -966,6 +974,7 @@ impl OpCacheData {
         OpCacheData {
             opid,
             src_input: None,
+            general_inputs: Default::default(),
             extra_inputs: Default::default(),
             outputs: Default::default(),
         }
@@ -984,6 +993,16 @@ impl OpCacheData {
     /// appropriately).
     pub fn set_src_input(&mut self, inst: RuntimeEntityInstance) -> &mut Self {
         self.src_input = Some(inst);
+        self
+    }
+
+    /// Add a "general" input to this operation.
+    ///
+    /// This is an input dependency that is not the special "source input",
+    /// nor is it an "extra input" that gets associated with the source input.
+    /// It's just an input.
+    pub fn add_input(&mut self, inst: RuntimeEntityInstance) -> &mut Self {
+        self.general_inputs.push(inst);
         self
     }
 
