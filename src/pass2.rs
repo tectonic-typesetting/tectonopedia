@@ -20,7 +20,6 @@ use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
-use walkdir::DirEntry;
 
 use crate::{
     cache::{Cache, OpCacheData},
@@ -146,8 +145,8 @@ impl Pass2Driver {
 impl WorkerDriver for Pass2Driver {
     type Item = Self;
 
-    fn init_command(&self, cmd: &mut Command, entry: &DirEntry, task_num: usize) {
-        cmd.arg("second-pass-impl").arg(entry.path());
+    fn init_command(&self, cmd: &mut Command, path: &str, task_num: usize) {
+        cmd.arg("second-pass-impl").arg(path);
 
         if task_num == 0 {
             cmd.arg("--first");

@@ -36,6 +36,27 @@ impl Iterator for InputIterator {
     }
 }
 
+/// Collect all input paths into a vector of strings.
+pub fn collect_input_rel_paths() -> Result<Vec<String>> {
+    let mut paths = Vec::new();
+
+    for entry in InputIterator::new() {
+        let entry = atry!(
+            entry;
+            ["error while walking input tree"]
+        );
+
+        let entry = a_ok_or!(
+            entry.path().to_str();
+            ["input paths must be Unicode-compatible; failed with `{}`", entry.path().display()]
+        );
+
+        paths.push(entry.to_owned());
+    }
+
+    Ok(paths)
+}
+
 fn is_tex_or_dir(entry: &DirEntry) -> bool {
     entry.file_type().is_dir()
         || entry

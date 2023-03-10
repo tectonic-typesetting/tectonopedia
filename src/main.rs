@@ -90,10 +90,18 @@ impl BuildArgs {
             ["failed to load user indices"]
         );
 
+        // Collect all of the inputs. With the way that we make the build
+        // incremental, it makes the most sense to just put them all in a big vec.
+
+        let input_relpaths = atry!(
+            inputs::collect_input_rel_paths();
+            ["failed to scan list of input files"]
+        );
+
         // First TeX pass of indexing and gathering font/asset information.
 
         let mut p1r = pass1::Pass1Reducer::new(indices);
-        let ninputs = texworker::reduce_inputs(&mut p1r, &mut cache, status)?;
+        let ninputs = texworker::reduce_inputs(&input_relpaths, &mut p1r, &mut cache, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
         let (_assets, _indices) = p1r.unpack();
 

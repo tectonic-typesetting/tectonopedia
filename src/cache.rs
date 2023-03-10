@@ -374,6 +374,7 @@ impl Cache {
         Ok(cache)
     }
 
+    #[inline(always)]
     fn intern_path(&mut self, p: impl AsRef<str>) -> PathSymbol {
         self.paths.get_or_intern(p)
     }

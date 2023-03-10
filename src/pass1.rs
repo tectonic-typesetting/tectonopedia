@@ -18,7 +18,6 @@ use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
-use walkdir::DirEntry;
 
 use crate::{
     cache::{Cache, OpCacheData, OpOutputStream},
@@ -254,8 +253,8 @@ pub struct Pass1Driver {
 impl WorkerDriver for Pass1Driver {
     type Item = Self;
 
-    fn init_command(&self, cmd: &mut Command, entry: &DirEntry, _task_num: usize) {
-        cmd.arg("first-pass-impl").arg(entry.path());
+    fn init_command(&self, cmd: &mut Command, path: &str, _task_num: usize) {
+        cmd.arg("first-pass-impl").arg(path);
     }
 
     fn send_stdin(&self, _stdin: &mut ChildStdin) -> Result<()> {

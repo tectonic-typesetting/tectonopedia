@@ -17,7 +17,6 @@ use std::{
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use threadpool::ThreadPool;
-use walkdir::DirEntry;
 
 use crate::{
     cache::{Cache, OpCacheData},
@@ -128,9 +127,9 @@ pub trait WorkerDriver: Send {
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
     ///
-    /// *entry* is the information about the input file. *task_num* is index
+    /// *path* is the relative path to the input file. *task_num* is index
     /// number of this particular processing task.
-    fn init_command(&self, cmd: &mut Command, entry: &DirEntry, task_num: usize);
+    fn init_command(&self, cmd: &mut Command, path: &str, task_num: usize);
 
     /// Send information to the subcommand over its standard input.
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()>;
@@ -146,7 +145,7 @@ pub trait WorkerDriver: Send {
 fn process_one_input<W: WorkerDriver>(
     mut driver: W,
     self_path: PathBuf,
-    entry: DirEntry,
+    path: String,
     id: InputId,
     n_tasks: usize,
 ) -> Result<(InputId, W::Item), WorkerError<()>> {
@@ -155,11 +154,10 @@ fn process_one_input<W: WorkerDriver>(
     // system is not thread-safe). It also needs to do that to provide context
     // about the origin of any messages. It should fully report out any errors
     // that it encounters.
-    let mut status =
-        Box::new(WorkerStatusBackend::new(entry.path().display())) as Box<dyn StatusBackend>;
+    let mut status = Box::new(WorkerStatusBackend::new(&path)) as Box<dyn StatusBackend>;
 
     let mut cmd = Command::new(&self_path);
-    driver.init_command(&mut cmd, &entry, n_tasks);
+    driver.init_command(&mut cmd, &path, n_tasks);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     let mut child = match cmd.spawn() {
@@ -288,7 +286,8 @@ pub trait TexReducer {
     ) -> Result<(), WorkerError<()>>;
 }
 
-pub fn reduce_inputs<R: TexReducer>(
+pub fn reduce_inputs<'a, R: TexReducer>(
+    paths: impl IntoIterator<Item = &'a String>,
     red: &mut R,
     cache: &mut Cache,
     status: &mut dyn StatusBackend,
@@ -305,18 +304,13 @@ pub fn reduce_inputs<R: TexReducer>(
     let mut n_tasks = 0;
     let mut n_failures = 0;
 
-    for entry in crate::inputs::InputIterator::new() {
-        let entry = atry!(
-            entry;
-            ["error while walking input tree"]
-        );
-
-        let maybe_info = match reduce_input_prep(red, &entry, cache, status) {
+    for path in paths {
+        let maybe_info = match reduce_input_prep(red, &path, cache, status) {
             Ok(w) => w,
 
             Err(WorkerError::General(e)) => {
                 n_failures += 1;
-                tt_error!(status, "needs test failed for input `{}`; giving up early", entry.path().display(); e);
+                tt_error!(status, "needs test failed for input `{}`; giving up early", path; e);
                 break; // give up
             }
 
@@ -326,7 +320,7 @@ pub fn reduce_inputs<R: TexReducer>(
                 // something is messed up that will break all of the
                 // builds.
                 n_failures += 1;
-                tt_error!(status, "needs test failed for input `{}`; trying others", entry.path().display(); e);
+                tt_error!(status, "needs test failed for input `{}`; trying others", path; e);
                 continue;
             }
         };
@@ -334,9 +328,10 @@ pub fn reduce_inputs<R: TexReducer>(
         if let Some((id, driver)) = maybe_info {
             let tx = tx.clone();
             let sp = self_path.clone();
+            let p = path.to_owned();
 
             pool.execute(move || {
-                tx.send(process_one_input(driver, sp, entry, id, n_tasks))
+                tx.send(process_one_input(driver, sp, p, id, n_tasks))
                     .expect("channel waits for pool result");
             });
             n_tasks += 1;
@@ -398,14 +393,14 @@ pub fn reduce_inputs<R: TexReducer>(
 
 fn reduce_input_prep<R: TexReducer>(
     red: &mut R,
-    entry: &DirEntry,
+    path: &str,
     cache: &mut Cache,
     status: &mut dyn StatusBackend,
 ) -> Result<Option<(InputId, R::Worker)>, WorkerError<Error>> {
-    let (id, ocd) = red.set_up_operation(entry.path().display().to_string(), cache)?;
+    let (id, ocd) = red.set_up_operation(path.to_owned(), cache)?;
 
     if !stry!(cache.operation_needs_rerun(&ocd, status)) {
-        tt_warning!(status, "skipping input `{}`!!!", entry.path().display());
+        tt_warning!(status, "skipping input `{}`!!!", path);
         return Ok(None);
     }
 
