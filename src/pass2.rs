@@ -19,16 +19,17 @@ use tectonic::{
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
+use tectonic_status_base::{tt_warning, StatusBackend};
 
 use crate::{
-    cache::{Cache, OpCacheData},
+    cache::OpCacheData,
     gtry,
     index::{IndexCollection, IndexId},
     metadata::Metadatum,
-    ogtry, ostry, stry,
+    ogtry,
+    operation::{DigestData, RuntimeEntityIdent},
+    ostry, stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
-    worker_status::WorkerStatusBackend,
     InputId,
 };
 
@@ -45,23 +46,10 @@ pub struct Pass2Reducer {
 impl TexReducer for Pass2Reducer {
     type Worker = Pass2Driver;
 
-    fn set_up_operation(
-        &mut self,
-        input_relpath: String,
-        _cache: &mut Cache,
-    ) -> Result<(InputId, OpCacheData), WorkerError<Error>> {
-        let _id = self
-            .indices
-            .reference_by_id(self.inputs_index_id, input_relpath);
-
-        unreachable!()
-    }
-
     fn make_worker(
         &mut self,
-        _id: InputId,
-        _ocd: OpCacheData,
-        _cache: &mut Cache,
+        input: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>> {
         let rrtex = self
             .indices
@@ -69,21 +57,15 @@ impl TexReducer for Pass2Reducer {
         Ok(Pass2Driver::new(rrtex, self.assets.clone()))
     }
 
-    fn process_item(
-        &mut self,
-        id: InputId,
-        item: Pass2Driver,
-        _scache: &mut Cache,
-    ) -> Result<(), WorkerError<()>> {
-        let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
-        let mut status = WorkerStatusBackend::new(input_path);
-
-        if let Err(e) = self.process_item_inner(id, item) {
-            tt_error!(status, "failed to process pass 2 data"; e);
-            return Err(WorkerError::Specific(()));
-        }
-
-        Ok(())
+    fn finish_item(&mut self, item: Pass2Driver) -> Result<(), WorkerError<Error>> {
+        unreachable!();
+        //let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
+        //let mut status = WorkerStatusBackend::new(input_path);
+        //
+        //if let Err(e) = self.process_item_inner(id, item) {
+        //    tt_error!(status, "failed to process pass 2 data"; e);
+        //    return Err(WorkerError::Specific(()));
+        //}
     }
 }
 
@@ -145,8 +127,13 @@ impl Pass2Driver {
 impl WorkerDriver for Pass2Driver {
     type Item = Self;
 
-    fn init_command(&self, cmd: &mut Command, path: &str, task_num: usize) {
-        cmd.arg("second-pass-impl").arg(path);
+    fn operation_ident(&self) -> DigestData {
+        unreachable!()
+    }
+
+    fn init_command(&self, cmd: &mut Command, task_num: usize) {
+        unreachable!();
+        //cmd.arg("second-pass-impl").arg(path);
 
         if task_num == 0 {
             cmd.arg("--first");
@@ -166,8 +153,9 @@ impl WorkerDriver for Pass2Driver {
         }
     }
 
-    fn finish(self) -> Self {
-        self
+    fn finish(self) -> (OpCacheData, Self) {
+        unreachable!();
+        //self
     }
 }
 

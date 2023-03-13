@@ -2,7 +2,7 @@
 // Licensed under the MIT License
 
 use clap::{Args, Parser, Subcommand};
-use std::{fs::File, io::Write, time::Instant};
+use std::time::Instant;
 use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
@@ -14,6 +14,7 @@ mod index;
 mod inputs;
 mod metadata;
 mod multivec;
+mod operation;
 mod pass1;
 mod pass2;
 #[macro_use]
@@ -79,31 +80,33 @@ impl BuildArgs {
 
         // Set up data structures
 
-        let mut cache = atry!(
-            cache::Cache::new(status);
-            ["error initializing build cache"]
-        );
-        let mut indices = index::IndexCollection::default();
+        let mut indices = index::IndexCollection::new()?;
 
         atry!(
             indices.load_user_indices();
             ["failed to load user indices"]
         );
 
+        let mut cache = atry!(
+            cache::Cache::new(&mut indices, status);
+            ["error initializing build cache"]
+        );
+
         // Collect all of the inputs. With the way that we make the build
         // incremental, it makes the most sense to just put them all in a big vec.
 
-        let input_relpaths = atry!(
-            inputs::collect_input_rel_paths();
+        let inputs = atry!(
+            inputs::collect_inputs(&mut indices);
             ["failed to scan list of input files"]
         );
 
         // First TeX pass of indexing and gathering font/asset information.
 
-        let mut p1r = pass1::Pass1Reducer::new(indices);
-        let ninputs = texworker::reduce_inputs(&input_relpaths, &mut p1r, &mut cache, status)?;
+        let mut p1r = pass1::Pass1Reducer::new(&indices);
+        let ninputs =
+            texworker::reduce_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
-        let (_assets, _indices) = p1r.unpack();
+        let _assets = p1r.unpack();
 
         // Resolve cross-references and validate.
 

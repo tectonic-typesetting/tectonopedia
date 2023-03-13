@@ -3,14 +3,26 @@
 
 #![allow(unused)]
 
-use std::{fmt::Write, fs::File, io::Read};
+use std::{
+    collections::HashMap,
+    fmt::Write,
+    fs::File,
+    io::{BufRead, BufReader, Read},
+    path::PathBuf,
+};
 use string_interner::{StringInterner, Symbol};
 use tectonic_errors::prelude::*;
-use tectonic_status_base::{tt_error, StatusBackend};
+use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 
 use crate::{
-    holey_vec::HoleyVec, multivec::MultiVec, tex_escape::encode_tex_to_string,
-    worker_status::WorkerStatusBackend, InputId,
+    cache::{Cache, OpCacheData},
+    holey_vec::HoleyVec,
+    metadata::Metadatum,
+    multivec::MultiVec,
+    operation::{PersistEntityIdent, RuntimeEntityIdent},
+    tex_escape::encode_tex_to_string,
+    worker_status::WorkerStatusBackend,
+    InputId,
 };
 
 use string_interner::DefaultSymbol as EntryId;
@@ -135,6 +147,12 @@ pub struct IndexCollection {
     /// processing. The multi-vec's "keys" are the to_usize() of the input
     /// EntryIds.
     refs: MultiVec<IndexRef>,
+
+    /// The tree root doesn't have to do with the indices as used in the text
+    /// processing, but we also use the indices to manage input and output
+    /// paths used by the build system, so it's convenient to have the root
+    /// saved here.
+    root: PathBuf,
 }
 
 pub const INDEX_OF_INDICES_NAME: &'static str = "ioi";
@@ -146,10 +164,40 @@ const INPUTS_INDEX_INDEX: usize = 1;
 pub const OUTPUTS_INDEX_NAME: &'static str = "outputs";
 const OUTPUTS_INDEX_INDEX: usize = 2;
 
+pub const OTHER_PATHS_INDEX_NAME: &'static str = "otherpaths";
+const OTHER_PATHS_INDEX_INDEX: usize = 3;
+
 pub const FRAGMENTS_INDEX_NAME: &'static str = "fragments";
-const FRAGMENTS_INDEX_INDEX: usize = 3;
+const FRAGMENTS_INDEX_INDEX: usize = 4;
 
 impl IndexCollection {
+    pub fn new() -> Result<Self> {
+        let root = crate::config::get_root()?;
+
+        let mut inst = IndexCollection {
+            indices: vec![Index::default()],
+            refs: Default::default(),
+            root,
+        };
+
+        let id = inst.indices[INDEX_OF_INDICES_INDEX].reference(INDEX_OF_INDICES_NAME);
+        assert_eq!(id.to_usize(), INDEX_OF_INDICES_INDEX);
+
+        let id = inst.declare_index(INPUTS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), INPUTS_INDEX_INDEX);
+
+        let id = inst.declare_index(OUTPUTS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), OUTPUTS_INDEX_INDEX);
+
+        let id = inst.declare_index(OTHER_PATHS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), OTHER_PATHS_INDEX_INDEX);
+
+        let id = inst.declare_index(FRAGMENTS_INDEX_NAME).unwrap();
+        assert_eq!(id.to_usize(), FRAGMENTS_INDEX_INDEX);
+
+        Ok(inst)
+    }
+
     /// Define a new index by name.
     ///
     /// Indices cannot be redundantly declared.
@@ -451,29 +499,246 @@ impl IndexCollection {
 
         Ok(())
     }
-}
 
-impl Default for IndexCollection {
-    fn default() -> Self {
-        let mut inst = IndexCollection {
-            indices: vec![Index::default()],
-            refs: Default::default(),
-        };
+    // Support for the "operation" framework
 
-        let id = inst.indices[INDEX_OF_INDICES_INDEX].reference(INDEX_OF_INDICES_NAME);
-        assert_eq!(id.to_usize(), INDEX_OF_INDICES_INDEX);
-
-        let id = inst.declare_index(INPUTS_INDEX_NAME).unwrap();
-        assert_eq!(id.to_usize(), INPUTS_INDEX_INDEX);
-
-        let id = inst.declare_index(OUTPUTS_INDEX_NAME).unwrap();
-        assert_eq!(id.to_usize(), OUTPUTS_INDEX_INDEX);
-
-        let id = inst.declare_index(FRAGMENTS_INDEX_NAME).unwrap();
-        assert_eq!(id.to_usize(), FRAGMENTS_INDEX_INDEX);
-
-        inst
+    /// Create an entity identifier for a TeX source input file.
+    ///
+    /// This returns a value of [`RuntimeEntityIdent::TexSourceFile`].
+    #[inline(always)]
+    pub fn make_tex_source_ident(&mut self, relpath: impl AsRef<str>) -> RuntimeEntityIdent {
+        let id = self.indices[INPUTS_INDEX_INDEX].reference(relpath);
+        RuntimeEntityIdent::TexSourceFile(id)
     }
+
+    /// Create an entity identifier for a file not matching one of the
+    /// other categories.
+    ///
+    /// This returns a value of [`RuntimeEntityIdent::OtherFile`].
+    #[inline(always)]
+    pub fn make_other_file_ident(&mut self, relpath: impl AsRef<str>) -> RuntimeEntityIdent {
+        let id = self.indices[OTHER_PATHS_INDEX_INDEX].reference(relpath);
+        RuntimeEntityIdent::OtherFile(id)
+    }
+
+    /// Convert a [`RuntimeEntityIdent`] to a [`PersistEntityIdent`].
+    pub fn persist_ident(&self, rei: RuntimeEntityIdent) -> PersistEntityIdent {
+        match rei {
+            RuntimeEntityIdent::TexSourceFile(s) => {
+                let p = self.indices[INPUTS_INDEX_INDEX].resolve(s);
+                PersistEntityIdent::TexSourceFile(p.to_owned())
+            }
+
+            RuntimeEntityIdent::OtherFile(s) => {
+                let p = self.indices[OTHER_PATHS_INDEX_INDEX].resolve(s);
+                PersistEntityIdent::OtherFile(p.to_owned())
+            }
+        }
+    }
+
+    /// Get a filesystem path associated with a [`PersistEntityIdent`], if one
+    /// exists.
+    pub(crate) fn path_for_runtime_ident(&self, rei: RuntimeEntityIdent) -> Result<PathBuf> {
+        let mut p = self.root.clone();
+
+        match rei {
+            RuntimeEntityIdent::TexSourceFile(s) => {
+                p.push("txt");
+                p.push(self.indices[INPUTS_INDEX_INDEX].resolve(s));
+            }
+
+            RuntimeEntityIdent::OtherFile(s) => {
+                p.push(self.indices[OTHER_PATHS_INDEX_INDEX].resolve(s));
+            }
+        }
+
+        /// One day, we may have idents that don't have associated paths, but
+        /// right now, they all do.
+        Ok(p)
+    }
+
+    /// Get a relative path associated with a TeX source file.
+    ///
+    /// This is a specialized helper for formatting nice outputs.
+    pub(crate) fn relpath_for_tex_source(&self, rei: RuntimeEntityIdent) -> Option<&str> {
+        match rei {
+            RuntimeEntityIdent::TexSourceFile(s) => {
+                Some(self.indices[INPUTS_INDEX_INDEX].resolve(s))
+            }
+            _ => None,
+        }
+    }
+
+    /// Convert a [`PersistEntityIdent`] to a [`RuntimeEntityIdent`].
+    pub fn runtime_ident(&mut self, pei: &PersistEntityIdent) -> RuntimeEntityIdent {
+        match pei {
+            PersistEntityIdent::TexSourceFile(p) => self.make_tex_source_ident(p),
+            PersistEntityIdent::OtherFile(p) => self.make_other_file_ident(p),
+        }
+    }
+
+    // Indexing as an operation that can be done incrementally.
+
+    /// Make an [`OpCacheData`] for the internal indexing operation.
+    //pub fn make_cache_data<'a>(
+    //    &self,
+    //    inputs: impl IntoIterator<Item = &'a String>,
+    //    cache: &mut Cache,
+    //) -> Result<OpCacheData> {
+    //    let mut data = OpCacheData::new(OpIdent::IndexInternal);
+    //
+    //    for input in inputs {
+    //        let stripped = input.strip_suffix(".tex").unwrap_or(input);
+    //        let path = format!("pass1/{stripped}.meta");
+    //        let inst = atry!(
+    //            cache.get_intermediate_file_instance(&path);
+    //            ["failed to add input file `{}`", path]
+    //        );
+    //        data.add_input(inst);
+    //    }
+    //
+    //    for (index_id, index_name) in self.indices[INDEX_OF_INDICES_INDEX].iter() {
+    //        data.add_output(cache.get_intermediate_file_ident(format!("index/{index_name}.txt")));
+    //    }
+    //
+    //    Ok(data)
+    //}
+
+    fn load_metadata(
+        &mut self,
+        input_relpath: &str,
+        cache: &mut Cache,
+        status: &mut dyn StatusBackend,
+    ) -> Result<impl IntoIterator<Item = IndexRef>> {
+        let outputs_id = self.get_index("outputs").unwrap();
+        let mut cur_output = None;
+        let mut index_refs = HashMap::new();
+
+        /// gross to create this ourselves, but not convenient to pass
+        /// the input entity idents around either.
+        let mut meta_path = PathBuf::new();
+        meta_path.push("cache");
+        meta_path.push(input_relpath);
+
+        let meta_file = atry!(
+            File::open(&meta_path);
+            ["failed to open input `{}`", meta_path.display()]
+        );
+
+        let meta_buf = BufReader::new(meta_file);
+
+        for line in meta_buf.lines() {
+            let line = atry!(
+                line;
+                ["failed to read input `{}`", meta_path.display()]
+            );
+
+            match Metadatum::parse(&line)? {
+                Metadatum::Output(path) => {
+                    // TODO: make sure there are no redundant outputs
+                    cur_output = Some(self.reference_by_id(outputs_id, path));
+                }
+
+                Metadatum::IndexDef {
+                    index,
+                    entry,
+                    fragment,
+                } => {
+                    if let Err(e) = self.reference(index, entry) {
+                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
+                        continue;
+                    }
+
+                    let co = match cur_output.as_ref() {
+                        Some(o) => *o,
+                        None => {
+                            tt_warning!(status, "attempt to define entry `{}` in index `{}` before an output has been specified", entry, index);
+                            continue;
+                        }
+                    };
+
+                    let loc = self.make_location_by_id(co, fragment);
+
+                    if let Err(e) = self.define_loc(index, entry, loc) {
+                        // The error here will contain the contextual information.
+                        tt_warning!(status, "couldn't define an index entry"; e);
+                    }
+                }
+
+                Metadatum::IndexRef {
+                    index,
+                    entry,
+                    flags,
+                } => {
+                    let ie = match self.reference_to_entry(index, entry) {
+                        Ok(ie) => ie,
+
+                        Err(e) => {
+                            tt_warning!(status, "couldn't reference entry `{}` in index `{}`", entry, index; e);
+                            continue;
+                        }
+                    };
+
+                    let cur_flags = index_refs.entry(ie).or_default();
+                    *cur_flags |= flags;
+                }
+
+                Metadatum::IndexText {
+                    index,
+                    entry,
+                    tex,
+                    plain,
+                } => {
+                    if let Err(e) = self.reference(index, entry) {
+                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
+                        continue;
+                    }
+
+                    let text = EntryText {
+                        tex: tex.to_owned(),
+                        plain: plain.to_owned(),
+                    };
+
+                    if let Err(e) = self.define_text(index, entry, text) {
+                        // The error here will contain the contextual information.
+                        tt_warning!(status, "couldn't define the text of an index entry"; e);
+                    }
+                }
+            }
+        }
+
+        Ok(index_refs
+            .into_iter()
+            .map(|((index, entry), flags)| IndexRef {
+                index,
+                entry,
+                flags,
+            }))
+    }
+
+    //pub fn do_operation<'a>(
+    //    &self,
+    //    data: OpCacheData,
+    //    inputs: impl IntoIterator<Item = &'a String>,
+    //    cache: &mut Cache,
+    //    status: &mut dyn StatusBackend,
+    //) -> Result<()> {
+    //    for input in inputs {
+    //        let stripped = input.strip_suffix(".tex").unwrap_or(input);
+    //        let path = format!("pass1/{stripped}.meta");
+    //        let index_refs = atry!(
+    //            self.load_metadata(&path, cache, status);
+    //            ["failed to add input file `{}`", path]
+    //        );
+    //
+    //        atry!(
+    //            self.log_references(id, index_refs);
+    //            ["failed to log references for input `{}`", path]
+    //        );
+    //    }
+    //
+    //    Ok(())
+    //}
 }
 
 /// An reference to an entry in an index.

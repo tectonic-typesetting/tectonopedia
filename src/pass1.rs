@@ -4,8 +4,10 @@
 //! "Pass 1"
 
 use clap::Args;
+use digest::Digest;
 use std::{
     io::{BufRead, BufReader, Cursor, Write},
+    path::PathBuf,
     process::{ChildStdin, Command},
 };
 use tectonic::{
@@ -17,86 +19,44 @@ use tectonic::{
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
+use tectonic_status_base::{tt_warning, StatusBackend};
 
 use crate::{
-    cache::{Cache, OpCacheData, OpOutputStream},
+    cache::OpCacheData,
     gtry,
     index::{IndexCollection, IndexId},
     //index::{EntryText, IndexCollection, IndexId, IndexRef},
     //metadata::Metadatum,
     ogtry,
+    operation::{DigestComputer, DigestData, OpOutputStream, RuntimeEntityIdent},
     ostry,
     stry,
     texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
-    worker_status::WorkerStatusBackend,
-    InputId,
 };
 
+/// This type manages the execution of the set of pass-1 TeX jobs.
 #[derive(Debug)]
 pub struct Pass1Reducer {
     assets: AssetSpecification,
-    indices: IndexCollection,
     inputs_index_id: IndexId,
 }
 
 impl TexReducer for Pass1Reducer {
+    /// This type is sent to a worker thread to drive an actual TeX process and
+    /// return any results that we care about at runtime.
     type Worker = Pass1Driver;
-
-    fn set_up_operation(
-        &mut self,
-        input_relpath: String,
-        cache: &mut Cache,
-    ) -> Result<(InputId, OpCacheData), WorkerError<Error>> {
-        let id = self
-            .indices
-            .reference_by_id(self.inputs_index_id, &input_relpath);
-
-        let ocd = stry!(cache.make_pass1_cache_data(input_relpath));
-        // No further customization needed
-
-        Ok((id, ocd))
-    }
 
     fn make_worker(
         &mut self,
-        id: InputId,
-        ocd: OpCacheData,
-        cache: &mut Cache,
+        input: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>> {
-        let input_relpath = self.indices.resolve_by_id(self.inputs_index_id, id);
-
-        let stripped = input_relpath.strip_suffix(".tex").unwrap_or(input_relpath);
-        let assets = stry!(OpOutputStream::new_intermediate(
-            &format!("pass1/{stripped}.assets"),
-            cache
-        ));
-        let metadata = stry!(OpOutputStream::new_intermediate(
-            &format!("pass1/{stripped}.meta"),
-            cache
-        ));
-
-        Ok(Pass1Driver {
-            assets,
-            metadata,
-            cache_data: ocd,
-            n_errors: 0,
-        })
+        Pass1Driver::new(input, indices)
     }
 
-    fn process_item(
-        &mut self,
-        id: InputId,
-        item: Pass1Driver,
-        cache: &mut Cache,
-    ) -> Result<(), WorkerError<()>> {
-        let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
-        let mut status = WorkerStatusBackend::new(input_path);
-
-        if let Err(e) = self.process_item_inner(item, cache) {
-            tt_error!(status, "failed to process pass 1 data"; e);
-            return Err(WorkerError::Specific(()));
-        }
+    fn finish_item(&mut self, item: Pass1Result) -> Result<(), WorkerError<Error>> {
+        stry!(item.assets.close());
+        stry!(item.metadata.close());
 
         //match self.process_item_inner(id, item, &mut status) {
         //    Ok(index_refs) => {
@@ -117,26 +77,17 @@ impl TexReducer for Pass1Reducer {
 }
 
 impl Pass1Reducer {
-    pub fn new(indices: IndexCollection) -> Self {
+    pub fn new(indices: &IndexCollection) -> Self {
         let inputs_index_id = indices.get_index("inputs").unwrap();
 
         Pass1Reducer {
             assets: Default::default(),
-            indices,
             inputs_index_id,
         }
     }
 
-    pub fn unpack(self) -> (AssetSpecification, IndexCollection) {
-        (self.assets, self.indices)
-    }
-
-    fn process_item_inner(&mut self, mut item: Pass1Driver, cache: &mut Cache) -> Result<()> {
-        // Close out the output files, record them, and we're done.
-        item.cache_data.add_output(item.assets.close(cache)?.ident);
-        item.cache_data
-            .add_output(item.metadata.close(cache)?.ident);
-        cache.finalize_operation(item.cache_data)
+    pub fn unpack(self) -> AssetSpecification {
+        self.assets
     }
 
     #[cfg(OLD)]
@@ -244,24 +195,76 @@ impl Pass1Reducer {
 
 #[derive(Debug)]
 pub struct Pass1Driver {
+    opid: DigestData,
+    input_path: PathBuf,
     cache_data: OpCacheData,
     assets: OpOutputStream,
     metadata: OpOutputStream,
     n_errors: usize,
 }
 
-impl WorkerDriver for Pass1Driver {
-    type Item = Self;
+impl Pass1Driver {
+    fn new(
+        input: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
+    ) -> Result<Self, WorkerError<Error>> {
+        // Generate the ID of this operation
+        let mut dc = DigestComputer::default();
+        dc.update("pass1_v1");
+        input.update_digest(&mut dc, indices);
+        let opid = dc.finalize();
 
-    fn init_command(&self, cmd: &mut Command, path: &str, _task_num: usize) {
-        cmd.arg("first-pass-impl").arg(path);
+        let input_path = indices.path_for_runtime_ident(input).unwrap();
+
+        let mut cache_data = OpCacheData::new(opid);
+        cache_data.add_input(input);
+
+        // Specify the outputs
+        let stripped = {
+            let input_relpath = indices.relpath_for_tex_source(input).unwrap();
+            input_relpath
+                .strip_suffix(".tex")
+                .unwrap_or(input_relpath)
+                .to_owned()
+        };
+
+        let assets_id =
+            RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.assets"), indices);
+        cache_data.add_output(assets_id);
+        let assets = stry!(OpOutputStream::new(assets_id, indices));
+
+        let meta_id =
+            RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.meta"), indices);
+        cache_data.add_output(meta_id);
+        let metadata = stry!(OpOutputStream::new(meta_id, indices));
+
+        Ok(Pass1Driver {
+            opid,
+            input_path,
+            cache_data,
+            assets,
+            metadata,
+            n_errors: 0,
+        })
+    }
+}
+
+impl WorkerDriver for Pass1Driver {
+    type Item = Pass1Result;
+
+    fn operation_ident(&self) -> DigestData {
+        self.opid.clone()
+    }
+
+    fn init_command(&self, cmd: &mut Command, _task_num: usize) {
+        cmd.arg("first-pass-impl").arg(&self.input_path);
     }
 
     fn send_stdin(&self, _stdin: &mut ChildStdin) -> Result<()> {
         Ok(())
     }
 
-    // TODO: record "extra inputs" if/when they are detected
+    // TODO: record additional inputs if/when they are detected
 
     fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
         if let Some(rest) = record.strip_prefix("assets ") {
@@ -279,9 +282,21 @@ impl WorkerDriver for Pass1Driver {
         }
     }
 
-    fn finish(self) -> Self::Item {
-        self
+    fn finish(self) -> (OpCacheData, Self::Item) {
+        (
+            self.cache_data,
+            Pass1Result {
+                assets: self.assets,
+                metadata: self.metadata,
+            },
+        )
     }
+}
+
+#[derive(Debug)]
+pub struct Pass1Result {
+    assets: OpOutputStream,
+    metadata: OpOutputStream,
 }
 
 #[derive(Args, Debug)]

@@ -4,6 +4,8 @@
 use tectonic_errors::prelude::*;
 use walkdir::{DirEntry, Error as WalkDirError, WalkDir};
 
+use crate::{index::IndexCollection, operation::RuntimeEntityIdent};
+
 pub struct InputIterator {
     inner: Box<dyn Iterator<Item = Result<DirEntry, WalkDirError>>>,
 }
@@ -37,7 +39,7 @@ impl Iterator for InputIterator {
 }
 
 /// Collect all input paths into a vector of strings.
-pub fn collect_input_rel_paths() -> Result<Vec<String>> {
+pub fn collect_inputs(indices: &mut IndexCollection) -> Result<Vec<RuntimeEntityIdent>> {
     let mut paths = Vec::new();
 
     for entry in InputIterator::new() {
@@ -51,7 +53,7 @@ pub fn collect_input_rel_paths() -> Result<Vec<String>> {
             ["input paths must be Unicode-compatible; failed with `{}`", entry.path().display()]
         );
 
-        paths.push(entry.to_owned());
+        paths.push(RuntimeEntityIdent::new_tex_source(entry, indices));
     }
 
     Ok(paths)

@@ -1,4 +1,4 @@
-// Copyright 2022 the Tectonic Project
+// Copyright 2022-2023 the Tectonic Project
 // Licensed under the MIT License
 
 //! TeX workers.
@@ -20,8 +20,10 @@ use threadpool::ThreadPool;
 
 use crate::{
     cache::{Cache, OpCacheData},
+    index::IndexCollection,
+    operation::{DigestData, RuntimeEntityIdent},
+    stry,
     worker_status::WorkerStatusBackend,
-    InputId,
 };
 
 #[derive(Debug)]
@@ -34,6 +36,18 @@ pub enum WorkerError<T> {
     /// An error specific to this input. We'll fail this input, but keep on
     /// going overall to report as many problems as we can.
     Specific(T),
+}
+
+impl<T> WorkerError<T> {
+    pub fn map<F, U>(self, func: F) -> WorkerError<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            WorkerError::General(t) => WorkerError::General(func(t)),
+            WorkerError::Specific(t) => WorkerError::Specific(func(t)),
+        }
+    }
 }
 
 pub trait WorkerResultExt<T> {
@@ -124,12 +138,17 @@ pub trait WorkerDriver: Send {
     /// associated type to be `Self`.
     type Item: Send + 'static;
 
+    /// Get a digest uniquely identifying this processing task.
+    ///
+    /// The digest will be used to check in the build cache and see if this
+    /// operation can actually be skipped.
+    fn operation_ident(&self) -> DigestData;
+
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
     ///
-    /// *path* is the relative path to the input file. *task_num* is index
-    /// number of this particular processing task.
-    fn init_command(&self, cmd: &mut Command, path: &str, task_num: usize);
+    /// *task_num* is index number of this particular processing task.
+    fn init_command(&self, cmd: &mut Command, task_num: usize);
 
     /// Send information to the subcommand over its standard input.
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()>;
@@ -137,27 +156,24 @@ pub trait WorkerDriver: Send {
     /// Process a line of output emitted by the worker process.
     fn process_output_record(&mut self, line: &str, status: &mut dyn StatusBackend);
 
-    /// Finish processing, returning the value to be sent to the driver thread.
-    /// Only called if the child process exits successfully.
-    fn finish(self) -> Self::Item;
+    /// Finish processing, returning information for the operation cache and the
+    /// value to be sent to the driver thread. Only called if the child process
+    /// exits successfully.
+    fn finish(self) -> (OpCacheData, Self::Item);
 }
 
 fn process_one_input<W: WorkerDriver>(
     mut driver: W,
     self_path: PathBuf,
-    path: String,
-    id: InputId,
     n_tasks: usize,
-) -> Result<(InputId, W::Item), WorkerError<()>> {
-    // This function is run in a fresh thread, so it needs to create its own
-    // status backend if it wants to report any information (because our status
-    // system is not thread-safe). It also needs to do that to provide context
-    // about the origin of any messages. It should fully report out any errors
-    // that it encounters.
-    let mut status = Box::new(WorkerStatusBackend::new(&path)) as Box<dyn StatusBackend>;
+    mut status: Box<dyn StatusBackend>,
+) -> Result<(OpCacheData, W::Item), WorkerError<()>> {
+    // This function should fully report out any errors that it encounters,
+    // since it can only propagate a stateless flag as to whether a "specific"
+    // or "general" error occurred; it can't propagate out detailed information.
 
     let mut cmd = Command::new(&self_path);
-    driver.init_command(&mut cmd, &path, n_tasks);
+    driver.init_command(&mut cmd, n_tasks);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     let mut child = match cmd.spawn() {
@@ -216,7 +232,7 @@ fn process_one_input<W: WorkerDriver>(
     };
 
     match (ec.success(), &error_type) {
-        (true, WorkerError::Specific(_)) => Ok((id, driver.finish())), // <= the default
+        (true, WorkerError::Specific(_)) => Ok(driver.finish()), // <= the default
         (true, WorkerError::General(_)) => {
             tt_warning!(
                 status.as_mut(),
@@ -237,34 +253,14 @@ pub trait TexReducer {
     /// `Item` type is returned to the main thread.
     type Worker: WorkerDriver + 'static;
 
-    /// Assign an opaque input identifier to an input that is to be processed,
-    /// and set up the operation associated with this task, which will let us
-    /// decide if actually needs to be run or not.
-    ///
-    /// This function is called in the main thread. It needs to interact with
-    /// the cache to do things like load up "extra inputs" that tell us which
-    /// additional files we should check for changes to know if the operation
-    /// should be rerun.
-    fn set_up_operation(
-        &mut self,
-        input_name: String,
-        cache: &mut Cache,
-    ) -> Result<(InputId, OpCacheData), WorkerError<Error>>;
-
     /// Create a worker object.
     ///
     /// This function is called in the main thread. The worker will be sent to a
     /// worker thread and then drive a TeX subprocess.
-    ///
-    /// The worker should almost surely take ownership of the [`OpCacheData`]
-    /// struct and use it during processing to, e.g., record "extra inputs".
-    /// This function may also need to use the cache to record output files that
-    /// will be created during the processing run.
     fn make_worker(
         &mut self,
-        id: InputId,
-        ocd: OpCacheData,
-        cache: &mut Cache,
+        input: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>>;
 
     /// Process the result of a TeX worker execution.
@@ -278,18 +274,17 @@ pub trait TexReducer {
     /// This function must print out any error if one is encountered. Due to the
     /// parallelization approach used in this framework, the returned result can
     /// indicate error information but cannot be used to report any information.
-    fn process_item(
+    fn finish_item(
         &mut self,
-        id: InputId,
         item: <Self::Worker as WorkerDriver>::Item,
-        cache: &mut Cache,
-    ) -> Result<(), WorkerError<()>>;
+    ) -> Result<(), WorkerError<Error>>;
 }
 
 pub fn reduce_inputs<'a, R: TexReducer>(
-    paths: impl IntoIterator<Item = &'a String>,
+    inputs: impl IntoIterator<Item = &'a RuntimeEntityIdent>,
     red: &mut R,
     cache: &mut Cache,
+    indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
 ) -> Result<usize> {
     let self_path = atry!(
@@ -304,13 +299,22 @@ pub fn reduce_inputs<'a, R: TexReducer>(
     let mut n_tasks = 0;
     let mut n_failures = 0;
 
-    for path in paths {
-        let maybe_info = match reduce_input_prep(red, &path, cache, status) {
+    for input in inputs {
+        let input = *input;
+
+        // Set up a custom status reporter for this input path.
+        let mut item_status = {
+            let path = indices.relpath_for_tex_source(input).unwrap();
+            Box::new(WorkerStatusBackend::new(path)) as Box<dyn StatusBackend + Send>
+        };
+
+        let maybe_info = match reduce_input_prep(red, input, cache, indices, item_status.as_mut()) {
             Ok(w) => w,
 
             Err(WorkerError::General(e)) => {
                 n_failures += 1;
-                tt_error!(status, "needs test failed for input `{}`; giving up early", path; e);
+                tt_error!(item_status, "prep failed"; e);
+                tt_error!(status, "giving up early");
                 break; // give up
             }
 
@@ -320,18 +324,17 @@ pub fn reduce_inputs<'a, R: TexReducer>(
                 // something is messed up that will break all of the
                 // builds.
                 n_failures += 1;
-                tt_error!(status, "needs test failed for input `{}`; trying others", path; e);
+                tt_error!(item_status, "prep failed"; e);
                 continue;
             }
         };
 
-        if let Some((id, driver)) = maybe_info {
+        if let Some(driver) = maybe_info {
             let tx = tx.clone();
             let sp = self_path.clone();
-            let p = path.to_owned();
 
             pool.execute(move || {
-                tx.send(process_one_input(driver, sp, p, id, n_tasks))
+                tx.send(process_one_input(driver, sp, n_tasks, item_status))
                     .expect("channel waits for pool result");
             });
             n_tasks += 1;
@@ -344,7 +347,9 @@ pub fn reduce_inputs<'a, R: TexReducer>(
 
         match rx.try_recv() {
             Ok(result) => {
-                match result.and_then(|t| red.process_item(t.0, t.1, cache)) {
+                match result
+                    .and_then(|t| reduce_input_finish(red, t.0, t.1, cache, indices, status))
+                {
                     Ok(_) => {}
 
                     Err(WorkerError::General(_)) => {
@@ -371,7 +376,7 @@ pub fn reduce_inputs<'a, R: TexReducer>(
 
     for result in rx.iter() {
         if result
-            .and_then(|t| red.process_item(t.0, t.1, cache))
+            .and_then(|t| reduce_input_finish(red, t.0, t.1, cache, indices, status))
             .is_err()
         {
             // At this point, we've already launched everything, so we can't
@@ -393,17 +398,45 @@ pub fn reduce_inputs<'a, R: TexReducer>(
 
 fn reduce_input_prep<R: TexReducer>(
     red: &mut R,
-    path: &str,
+    input: RuntimeEntityIdent,
     cache: &mut Cache,
+    indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
-) -> Result<Option<(InputId, R::Worker)>, WorkerError<Error>> {
-    let (id, ocd) = red.set_up_operation(path.to_owned(), cache)?;
+) -> Result<Option<R::Worker>, WorkerError<Error>> {
+    let driver = red.make_worker(input, indices)?;
+    let opid = driver.operation_ident();
 
-    if !stry!(cache.operation_needs_rerun(&ocd, status)) {
-        tt_warning!(status, "skipping input `{}`!!!", path);
+    if !stry!(cache.operation_needs_rerun(&opid, indices, status)) {
+        tt_warning!(status, "skipping input `{:?}`!!!", input);
         return Ok(None);
     }
 
-    let driver = red.make_worker(id, ocd, cache)?;
-    Ok(Some((id, driver)))
+    Ok(Some(driver))
+}
+
+fn reduce_input_finish<R: TexReducer>(
+    red: &mut R,
+    ocd: OpCacheData,
+    item: <<R as TexReducer>::Worker as WorkerDriver>::Item,
+    cache: &mut Cache,
+    indices: &mut IndexCollection,
+    status: &mut dyn StatusBackend,
+) -> Result<(), WorkerError<()>> {
+    if let Err(e) = red.finish_item(item) {
+        let inner = match e {
+            WorkerError::General(ref i) => i,
+            WorkerError::Specific(ref i) => i,
+        };
+
+        tt_error!(status, "failed to finish build step"; inner);
+        return Err(e.map(|_| ()));
+    }
+
+    if let Err(e) = cache.finalize_operation(ocd, indices) {
+        // Since this only involves the caching step, not the actaul build
+        // operation, we'll report it but not flag the error at a higher level.
+        tt_error!(status, "failed to save caching information for a build step"; e);
+    }
+
+    Ok(())
 }
