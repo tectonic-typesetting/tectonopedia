@@ -56,6 +56,8 @@ impl TexProcessor for Pass2Processor {
             .get_resolved_reference_tex(self.input_id.unwrap());
         Ok(Pass2Driver::new(rrtex, self.assets.clone()))
     }
+
+    fn accumulate_output(&mut self, _item: ()) {}
 }
 
 impl Pass2Processor {
@@ -114,6 +116,8 @@ impl Pass2Driver {
 }
 
 impl WorkerDriver for Pass2Driver {
+    type Item = ();
+
     fn operation_ident(&self) -> DigestData {
         unreachable!()
     }
@@ -140,7 +144,7 @@ impl WorkerDriver for Pass2Driver {
         }
     }
 
-    fn finish(self) -> Result<OpCacheData, WorkerError<Error>> {
+    fn finish(self) -> Result<(OpCacheData, ()), WorkerError<Error>> {
         unreachable!();
         //self
     }

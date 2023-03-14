@@ -106,7 +106,7 @@ impl BuildArgs {
         let ninputs =
             tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
-        let _assets = p1r.unpack();
+        let (_asset_ids, _metadata_ids) = p1r.unpack();
 
         // Resolve cross-references and validate.
 

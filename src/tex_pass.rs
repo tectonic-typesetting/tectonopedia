@@ -131,6 +131,8 @@ macro_rules! stry {
 /// worker threads. In that worker thread, it then interacts closely with the
 /// TeX subprocess. Once that subprocess exits, it is consumed.
 pub trait WorkerDriver: Send {
+    type Item: Send + 'static;
+
     /// Get a digest uniquely identifying this processing task.
     ///
     /// The digest will be used to check in the build cache and see if this
@@ -151,9 +153,10 @@ pub trait WorkerDriver: Send {
 
     /// Finalize this processing operation.
     ///
-    /// The result type returns information for the operation cache. This method
-    /// is only called if the child process exits successfully.
-    fn finish(self) -> Result<OpCacheData, WorkerError<Error>>;
+    /// The result type returns information for the operation cache and any data
+    /// that should be aggregated by the processor. This method is only called
+    /// if the child process exits successfully.
+    fn finish(self) -> Result<(OpCacheData, Self::Item), WorkerError<Error>>;
 }
 
 fn process_one_input<W: WorkerDriver>(
@@ -161,7 +164,7 @@ fn process_one_input<W: WorkerDriver>(
     self_path: PathBuf,
     n_tasks: usize,
     mut status: Box<dyn StatusBackend>,
-) -> Result<OpCacheData, WorkerError<()>> {
+) -> Result<(OpCacheData, W::Item), WorkerError<()>> {
     // This function should fully report out any errors that it encounters,
     // since it can only propagate a stateless flag as to whether a "specific"
     // or "general" error occurred; it can't propagate out detailed information.
@@ -265,11 +268,17 @@ pub trait TexProcessor {
         input: RuntimeEntityIdent,
         indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>>;
+
+    /// Accumulate an output from one of the workers.
+    ///
+    /// This function is called on the main thread with the "item" produced by a
+    /// worker.
+    fn accumulate_output(&mut self, item: <Self::Worker as WorkerDriver>::Item);
 }
 
-pub fn process_inputs<'a, R: TexProcessor>(
+pub fn process_inputs<'a, P: TexProcessor>(
     inputs: impl IntoIterator<Item = &'a RuntimeEntityIdent>,
-    red: &mut R,
+    proc: &mut P,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
@@ -295,7 +304,7 @@ pub fn process_inputs<'a, R: TexProcessor>(
             Box::new(WorkerStatusBackend::new(path)) as Box<dyn StatusBackend + Send>
         };
 
-        let maybe_info = match process_input_prep(red, input, cache, indices, item_status.as_mut())
+        let maybe_info = match process_input_prep(proc, input, cache, indices, item_status.as_mut())
         {
             Ok(w) => w,
 
@@ -335,8 +344,8 @@ pub fn process_inputs<'a, R: TexProcessor>(
 
         match rx.try_recv() {
             Ok(result) => {
-                let ocd = match result {
-                    Ok(ocd) => ocd,
+                let tup = match result {
+                    Ok(tup) => tup,
 
                     Err(WorkerError::General(_)) => {
                         n_failures += 1;
@@ -354,7 +363,7 @@ pub fn process_inputs<'a, R: TexProcessor>(
                     }
                 };
 
-                process_input_finish(ocd, cache, indices, status);
+                process_input_finish(proc, tup.0, tup.1, cache, indices, status);
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => unreachable!(),
@@ -364,8 +373,8 @@ pub fn process_inputs<'a, R: TexProcessor>(
     drop(tx);
 
     for result in rx.iter() {
-        let ocd = match result {
-            Ok(ocd) => ocd,
+        let tup = match result {
+            Ok(tup) => tup,
 
             Err(_) => {
                 // At this point, we've already launched everything, so we can't
@@ -376,7 +385,7 @@ pub fn process_inputs<'a, R: TexProcessor>(
             }
         };
 
-        process_input_finish(ocd, cache, indices, status);
+        process_input_finish(proc, tup.0, tup.1, cache, indices, status);
     }
 
     ensure!(
@@ -389,14 +398,14 @@ pub fn process_inputs<'a, R: TexProcessor>(
     Ok(n_tasks)
 }
 
-fn process_input_prep<R: TexProcessor>(
-    red: &mut R,
+fn process_input_prep<P: TexProcessor>(
+    proc: &mut P,
     input: RuntimeEntityIdent,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
-) -> Result<Option<R::Worker>, WorkerError<Error>> {
-    let driver = red.make_worker(input, indices)?;
+) -> Result<Option<P::Worker>, WorkerError<Error>> {
+    let driver = proc.make_worker(input, indices)?;
     let opid = driver.operation_ident();
 
     if !stry!(cache.operation_needs_rerun(&opid, indices, status)) {
@@ -407,12 +416,16 @@ fn process_input_prep<R: TexProcessor>(
     Ok(Some(driver))
 }
 
-fn process_input_finish(
+fn process_input_finish<P: TexProcessor>(
+    proc: &mut P,
     ocd: OpCacheData,
+    item: <<P as TexProcessor>::Worker as WorkerDriver>::Item,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
 ) {
+    proc.accumulate_output(item);
+
     // Since any failure only involves the caching step, not the actaul build
     // operation, we'll report it but not flag the error at a higher level.
     if let Err(e) = cache.finalize_operation(ocd, indices) {

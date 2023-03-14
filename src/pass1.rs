@@ -17,7 +17,6 @@ use tectonic::{
     unstable_opts::UnstableOptions,
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
-use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
 
@@ -37,8 +36,9 @@ use crate::{
 /// This type manages the execution of the set of pass-1 TeX jobs.
 #[derive(Debug)]
 pub struct Pass1Processor {
-    assets: AssetSpecification,
     inputs_index_id: IndexId,
+    asset_files: Vec<RuntimeEntityIdent>,
+    metadata_files: Vec<RuntimeEntityIdent>,
 }
 
 impl TexProcessor for Pass1Processor {
@@ -52,6 +52,11 @@ impl TexProcessor for Pass1Processor {
         indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>> {
         Pass1Driver::new(input, indices)
+    }
+
+    fn accumulate_output(&mut self, item: Pass1Result) {
+        self.asset_files.push(item.assets_id);
+        self.metadata_files.push(item.metadata_id);
     }
 
     //match self.process_item_inner(id, item, &mut status) {
@@ -74,13 +79,14 @@ impl Pass1Processor {
         let inputs_index_id = indices.get_index("inputs").unwrap();
 
         Pass1Processor {
-            assets: Default::default(),
+            asset_files: Default::default(),
+            metadata_files: Default::default(),
             inputs_index_id,
         }
     }
 
-    pub fn unpack(self) -> AssetSpecification {
-        self.assets
+    pub fn unpack(self) -> (Vec<RuntimeEntityIdent>, Vec<RuntimeEntityIdent>) {
+        (self.asset_files, self.metadata_files)
     }
 
     #[cfg(OLD)]
@@ -244,6 +250,8 @@ impl Pass1Driver {
 }
 
 impl WorkerDriver for Pass1Driver {
+    type Item = Pass1Result;
+
     fn operation_ident(&self) -> DigestData {
         self.opid.clone()
     }
@@ -274,23 +282,32 @@ impl WorkerDriver for Pass1Driver {
         }
     }
 
-    fn finish(mut self) -> Result<OpCacheData, WorkerError<Error>> {
-        let (entity, size) = stry!(self.assets.close());
-        self.cache_data
-            .add_output_with_value(entity.ident, entity.value_digest, size);
+    fn finish(mut self) -> Result<(OpCacheData, Pass1Result), WorkerError<Error>> {
+        let (assets_entity, size) = stry!(self.assets.close());
+        self.cache_data.add_output_with_value(
+            assets_entity.ident,
+            assets_entity.value_digest,
+            size,
+        );
 
-        let (entity, size) = stry!(self.metadata.close());
+        let (meta_entity, size) = stry!(self.metadata.close());
         self.cache_data
-            .add_output_with_value(entity.ident, entity.value_digest, size);
+            .add_output_with_value(meta_entity.ident, meta_entity.value_digest, size);
 
-        Ok(self.cache_data)
+        Ok((
+            self.cache_data,
+            Pass1Result {
+                assets_id: assets_entity.ident,
+                metadata_id: meta_entity.ident,
+            },
+        ))
     }
 }
 
 #[derive(Debug)]
 pub struct Pass1Result {
-    assets: OpOutputStream,
-    metadata: OpOutputStream,
+    assets_id: RuntimeEntityIdent,
+    metadata_id: RuntimeEntityIdent,
 }
 
 #[derive(Args, Debug)]
