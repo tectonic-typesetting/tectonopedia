@@ -526,11 +526,18 @@ impl Cache {
         // ordering, since those aren't relevant to figuring out whether this
         // step needs rerunning; we just need to verify that the outputs exist.
 
-        let pids: Vec<PersistEntityIdent> = data
-            .outputs
-            .iter()
-            .map(|rei| indices.persist_ident(*rei))
-            .collect();
+        let mut pids: Vec<PersistEntityIdent> = Vec::with_capacity(data.outputs.len());
+
+        for info in data.outputs.drain(..) {
+            pids.push(indices.persist_ident(info.0));
+
+            if let Some((value_digest, size)) = info.1 {
+                // Potentially risky to unwrap here
+                let path = indices.path_for_runtime_ident(info.0).unwrap();
+                let fentry = FileDigestEntry::create_for_known(&path, value_digest, size)?;
+                self.file_digests.insert(info.0, fentry);
+            }
+        }
 
         atry!(
             bincode::serialize_into(&mut f_cache, &pids);
@@ -551,7 +558,7 @@ impl Cache {
 pub struct OpCacheData {
     ident: DigestData,
     inputs: Vec<RuntimeEntityIdent>,
-    outputs: Vec<RuntimeEntityIdent>,
+    outputs: Vec<(RuntimeEntityIdent, Option<(DigestData, u64)>)>,
 }
 
 impl OpCacheData {
@@ -574,7 +581,23 @@ impl OpCacheData {
     ///
     /// Note that only the output identity is needed, not its full instance.
     pub fn add_output(&mut self, ident: RuntimeEntityIdent) -> &mut Self {
-        self.outputs.push(ident);
+        self.outputs.push((ident, None));
+        self
+    }
+
+    /// Register an output that is associated with this operation, plus
+    /// information about its value.
+    ///
+    /// While the value information is not needed for caching the results of
+    /// this operation, we can use it to be more efficient if this output is
+    /// used as the input of another operation.
+    pub fn add_output_with_value(
+        &mut self,
+        ident: RuntimeEntityIdent,
+        value_digest: DigestData,
+        size: u64,
+    ) -> &mut Self {
+        self.outputs.push((ident, Some((value_digest, size))));
         self
     }
 }

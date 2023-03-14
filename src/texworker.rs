@@ -277,6 +277,7 @@ pub trait TexReducer {
     fn finish_item(
         &mut self,
         item: <Self::Worker as WorkerDriver>::Item,
+        cache_data: &mut OpCacheData,
     ) -> Result<(), WorkerError<Error>>;
 }
 
@@ -416,13 +417,13 @@ fn reduce_input_prep<R: TexReducer>(
 
 fn reduce_input_finish<R: TexReducer>(
     red: &mut R,
-    ocd: OpCacheData,
+    mut ocd: OpCacheData,
     item: <<R as TexReducer>::Worker as WorkerDriver>::Item,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
 ) -> Result<(), WorkerError<()>> {
-    if let Err(e) = red.finish_item(item) {
+    if let Err(e) = red.finish_item(item, &mut ocd) {
         let inner = match e {
             WorkerError::General(ref i) => i,
             WorkerError::Specific(ref i) => i,

@@ -539,18 +539,19 @@ impl IndexCollection {
     /// Get a filesystem path associated with a [`PersistEntityIdent`], if one
     /// exists.
     pub(crate) fn path_for_runtime_ident(&self, rei: RuntimeEntityIdent) -> Result<PathBuf> {
-        let mut p = self.root.clone();
-
-        match rei {
+        let p = match rei {
             RuntimeEntityIdent::TexSourceFile(s) => {
-                p.push("txt");
+                let mut p = PathBuf::new();
                 p.push(self.indices[INPUTS_INDEX_INDEX].resolve(s));
+                p
             }
 
             RuntimeEntityIdent::OtherFile(s) => {
+                let mut p = self.root.clone();
                 p.push(self.indices[OTHER_PATHS_INDEX_INDEX].resolve(s));
+                p
             }
-        }
+        };
 
         /// One day, we may have idents that don't have associated paths, but
         /// right now, they all do.

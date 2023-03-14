@@ -89,18 +89,19 @@ impl PersistEntityIdent {
     /// The corresponding function on [`RuntimeEntityIdent`] is attached to the
     /// [`IndexCollection`] type because it depends on its internal structure.
     pub fn path(&self, root: PathBuf) -> Result<PathBuf> {
-        let mut p = root;
-
-        match self {
+        let p = match self {
             PersistEntityIdent::TexSourceFile(relpath) => {
-                p.push("txt");
+                let mut p = PathBuf::new();
                 p.push(relpath);
+                p
             }
 
             PersistEntityIdent::OtherFile(relpath) => {
+                let mut p = root;
                 p.push(relpath);
+                p
             }
-        }
+        };
 
         Ok(p)
     }
@@ -271,7 +272,7 @@ impl OpOutputStream {
     /// This operation uses standard Rust drop semantics to close the output
     /// file, and so cannot detect any I/O errors that occur as the file is
     /// closed.
-    pub fn close(mut self) -> Result<RuntimeEntity> {
+    pub fn close(mut self) -> Result<(RuntimeEntity, u64)> {
         atry!(
             self.flush();
             ["failed to flush file `{}`", self.path.display()]
@@ -286,10 +287,13 @@ impl OpOutputStream {
 
         let value_digest = self.dc.finalize();
 
-        Ok(RuntimeEntity {
-            ident: self.ident,
-            value_digest,
-        })
+        Ok((
+            RuntimeEntity {
+                ident: self.ident,
+                value_digest,
+            },
+            self.size,
+        ))
     }
 
     /// Get a displayable form of the path of this file.

@@ -57,7 +57,11 @@ impl TexReducer for Pass2Reducer {
         Ok(Pass2Driver::new(rrtex, self.assets.clone()))
     }
 
-    fn finish_item(&mut self, item: Pass2Driver) -> Result<(), WorkerError<Error>> {
+    fn finish_item(
+        &mut self,
+        item: Pass2Driver,
+        ocd: &mut OpCacheData,
+    ) -> Result<(), WorkerError<Error>> {
         unreachable!();
         //let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
         //let mut status = WorkerStatusBackend::new(input_path);

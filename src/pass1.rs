@@ -54,9 +54,16 @@ impl TexReducer for Pass1Reducer {
         Pass1Driver::new(input, indices)
     }
 
-    fn finish_item(&mut self, item: Pass1Result) -> Result<(), WorkerError<Error>> {
-        stry!(item.assets.close());
-        stry!(item.metadata.close());
+    fn finish_item(
+        &mut self,
+        item: Pass1Result,
+        ocd: &mut OpCacheData,
+    ) -> Result<(), WorkerError<Error>> {
+        let (entity, size) = stry!(item.assets.close());
+        ocd.add_output_with_value(entity.ident, entity.value_digest, size);
+
+        let (entity, size) = stry!(item.metadata.close());
+        ocd.add_output_with_value(entity.ident, entity.value_digest, size);
 
         //match self.process_item_inner(id, item, &mut status) {
         //    Ok(index_refs) => {
@@ -219,7 +226,10 @@ impl Pass1Driver {
         let mut cache_data = OpCacheData::new(opid);
         cache_data.add_input(input);
 
-        // Specify the outputs
+        // Specify the outputs. We add them to the cache data at the end of the
+        // operation, so that we can give the cache a hint about their final
+        // size and digest.
+
         let stripped = {
             let input_relpath = indices.relpath_for_tex_source(input).unwrap();
             input_relpath
@@ -230,12 +240,10 @@ impl Pass1Driver {
 
         let assets_id =
             RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.assets"), indices);
-        cache_data.add_output(assets_id);
         let assets = stry!(OpOutputStream::new(assets_id, indices));
 
         let meta_id =
             RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.meta"), indices);
-        cache_data.add_output(meta_id);
         let metadata = stry!(OpOutputStream::new(meta_id, indices));
 
         Ok(Pass1Driver {
