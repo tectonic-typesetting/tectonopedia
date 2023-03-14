@@ -29,12 +29,12 @@ use crate::{
     ogtry,
     operation::{DigestData, RuntimeEntityIdent},
     ostry, stry,
-    texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
+    tex_pass::{TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
     InputId,
 };
 
 #[derive(Debug)]
-pub struct Pass2Reducer {
+pub struct Pass2Processor {
     assets: AssetSpecification,
     indices: IndexCollection,
     inputs_index_id: IndexId,
@@ -43,7 +43,7 @@ pub struct Pass2Reducer {
     n_outputs: usize,
 }
 
-impl TexReducer for Pass2Reducer {
+impl TexProcessor for Pass2Processor {
     type Worker = Pass2Driver;
 
     fn make_worker(
@@ -56,24 +56,9 @@ impl TexReducer for Pass2Reducer {
             .get_resolved_reference_tex(self.input_id.unwrap());
         Ok(Pass2Driver::new(rrtex, self.assets.clone()))
     }
-
-    fn finish_item(
-        &mut self,
-        item: Pass2Driver,
-        ocd: &mut OpCacheData,
-    ) -> Result<(), WorkerError<Error>> {
-        unreachable!();
-        //let input_path = self.indices.resolve_by_id(self.inputs_index_id, id);
-        //let mut status = WorkerStatusBackend::new(input_path);
-        //
-        //if let Err(e) = self.process_item_inner(id, item) {
-        //    tt_error!(status, "failed to process pass 2 data"; e);
-        //    return Err(WorkerError::Specific(()));
-        //}
-    }
 }
 
-impl Pass2Reducer {
+impl Pass2Processor {
     pub fn new(
         assets: AssetSpecification,
         indices: IndexCollection,
@@ -81,7 +66,7 @@ impl Pass2Reducer {
     ) -> Self {
         let inputs_index_id = indices.get_index("inputs").unwrap();
 
-        Pass2Reducer {
+        Pass2Processor {
             assets,
             indices,
             inputs_index_id,
@@ -129,8 +114,6 @@ impl Pass2Driver {
 }
 
 impl WorkerDriver for Pass2Driver {
-    type Item = Self;
-
     fn operation_ident(&self) -> DigestData {
         unreachable!()
     }
@@ -157,7 +140,7 @@ impl WorkerDriver for Pass2Driver {
         }
     }
 
-    fn finish(self) -> (OpCacheData, Self) {
+    fn finish(self) -> Result<OpCacheData, WorkerError<Error>> {
         unreachable!();
         //self
     }

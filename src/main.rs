@@ -17,9 +17,9 @@ mod multivec;
 mod operation;
 mod pass1;
 mod pass2;
-#[macro_use]
-mod texworker;
 mod tex_escape;
+#[macro_use]
+mod tex_pass;
 mod worker_status;
 
 use worker_status::WorkerStatusBackend;
@@ -102,9 +102,9 @@ impl BuildArgs {
 
         // First TeX pass of indexing and gathering font/asset information.
 
-        let mut p1r = pass1::Pass1Reducer::new(&indices);
+        let mut p1r = pass1::Pass1Processor::new(&indices);
         let ninputs =
-            texworker::reduce_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
+            tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
         let _assets = p1r.unpack();
 
@@ -140,8 +140,8 @@ impl BuildArgs {
         //     ["error writing to output `build/_all.html`"]
         // );
         //
-        // let mut p2r = pass2::Pass2Reducer::new(assets, indices, entrypoints_file);
-        // texworker::reduce_inputs(&mut p2r, status)?;
+        // let mut p2r = pass2::Pass2Processor::new(assets, indices, entrypoints_file);
+        // tex_pass::process_inputs(&mut p2r, status)?;
         // let n_outputs = p2r.n_outputs();
         // tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
         //

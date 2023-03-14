@@ -1,7 +1,7 @@
 // Copyright 2022-2023 the Tectonic Project
 // Licensed under the MIT License
 
-//! TeX workers.
+//! A stage of the build process that does a pass over all TeX inputs.
 //!
 //! - Have to launch TeX in subprocesses because the engine can't be multithreaded
 //! - Use a threadpool to manage that
@@ -129,15 +129,8 @@ macro_rules! stry {
 ///
 /// This type is created in the primary thread and sent to one of the threadpool
 /// worker threads. In that worker thread, it then interacts closely with the
-/// TeX subprocess. Once that subprocess exits, it is consumed, and its
-/// [`Self::Item`] value is then sent back to the main thread.
+/// TeX subprocess. Once that subprocess exits, it is consumed.
 pub trait WorkerDriver: Send {
-    /// The type that will be returned to the driver thread.
-    ///
-    /// Since a WorkerDriver must itself be `Send`, it might make sense for this
-    /// associated type to be `Self`.
-    type Item: Send + 'static;
-
     /// Get a digest uniquely identifying this processing task.
     ///
     /// The digest will be used to check in the build cache and see if this
@@ -156,10 +149,11 @@ pub trait WorkerDriver: Send {
     /// Process a line of output emitted by the worker process.
     fn process_output_record(&mut self, line: &str, status: &mut dyn StatusBackend);
 
-    /// Finish processing, returning information for the operation cache and the
-    /// value to be sent to the driver thread. Only called if the child process
-    /// exits successfully.
-    fn finish(self) -> (OpCacheData, Self::Item);
+    /// Finalize this processing operation.
+    ///
+    /// The result type returns information for the operation cache. This method
+    /// is only called if the child process exits successfully.
+    fn finish(self) -> Result<OpCacheData, WorkerError<Error>>;
 }
 
 fn process_one_input<W: WorkerDriver>(
@@ -167,7 +161,7 @@ fn process_one_input<W: WorkerDriver>(
     self_path: PathBuf,
     n_tasks: usize,
     mut status: Box<dyn StatusBackend>,
-) -> Result<(OpCacheData, W::Item), WorkerError<()>> {
+) -> Result<OpCacheData, WorkerError<()>> {
     // This function should fully report out any errors that it encounters,
     // since it can only propagate a stateless flag as to whether a "specific"
     // or "general" error occurred; it can't propagate out detailed information.
@@ -223,6 +217,8 @@ fn process_one_input<W: WorkerDriver>(
         }
     }
 
+    // Wait for the process to finish and wrap up.
+
     let ec = match child.wait() {
         Ok(c) => c,
         Err(e) => {
@@ -232,20 +228,27 @@ fn process_one_input<W: WorkerDriver>(
     };
 
     match (ec.success(), &error_type) {
-        (true, WorkerError::Specific(_)) => Ok(driver.finish()), // <= the default
+        (true, WorkerError::Specific(_)) => {} // this is the default case
         (true, WorkerError::General(_)) => {
             tt_warning!(
                 status.as_mut(),
                 "TeX worker had a successful exit code but reported failure"
             );
-            Err(error_type)
+            return Err(error_type);
         }
-        (false, _) => Err(error_type),
+        (false, _) => return Err(error_type),
     }
+
+    driver.finish().map_err(|e| {
+        e.map(|inner| {
+            tt_error!(status, "error finalizing results"; inner);
+            ()
+        })
+    })
 }
 
 /// A type that can manage the execution of a large batch of TeX processing jobs.
-pub trait TexReducer {
+pub trait TexProcessor {
     /// This associated type is the one that actually deals with managing a TeX
     /// subprocess. Workers are created in the main thread and sent to a
     /// threadpool worker thread, in which they interact with the TeX
@@ -262,26 +265,9 @@ pub trait TexReducer {
         input: RuntimeEntityIdent,
         indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>>;
-
-    /// Process the result of a TeX worker execution.
-    ///
-    /// This function is called on the main thread and given the "item" produced
-    /// be a worker invocation. It should call [`Cache::finalize_operation`] to
-    /// log information about the operation inputs and outputs so that the
-    /// operation can potentially be skipped if it doesn't need to be rerun next
-    /// time.
-    ///
-    /// This function must print out any error if one is encountered. Due to the
-    /// parallelization approach used in this framework, the returned result can
-    /// indicate error information but cannot be used to report any information.
-    fn finish_item(
-        &mut self,
-        item: <Self::Worker as WorkerDriver>::Item,
-        cache_data: &mut OpCacheData,
-    ) -> Result<(), WorkerError<Error>>;
 }
 
-pub fn reduce_inputs<'a, R: TexReducer>(
+pub fn process_inputs<'a, R: TexProcessor>(
     inputs: impl IntoIterator<Item = &'a RuntimeEntityIdent>,
     red: &mut R,
     cache: &mut Cache,
@@ -309,7 +295,8 @@ pub fn reduce_inputs<'a, R: TexReducer>(
             Box::new(WorkerStatusBackend::new(path)) as Box<dyn StatusBackend + Send>
         };
 
-        let maybe_info = match reduce_input_prep(red, input, cache, indices, item_status.as_mut()) {
+        let maybe_info = match process_input_prep(red, input, cache, indices, item_status.as_mut())
+        {
             Ok(w) => w,
 
             Err(WorkerError::General(e)) => {
@@ -348,10 +335,8 @@ pub fn reduce_inputs<'a, R: TexReducer>(
 
         match rx.try_recv() {
             Ok(result) => {
-                match result
-                    .and_then(|t| reduce_input_finish(red, t.0, t.1, cache, indices, status))
-                {
-                    Ok(_) => {}
+                let ocd = match result {
+                    Ok(ocd) => ocd,
 
                     Err(WorkerError::General(_)) => {
                         n_failures += 1;
@@ -365,8 +350,11 @@ pub fn reduce_inputs<'a, R: TexReducer>(
                         // something is messed up that will break all of the
                         // builds.
                         n_failures += 1;
+                        continue;
                     }
-                }
+                };
+
+                process_input_finish(ocd, cache, indices, status);
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => unreachable!(),
@@ -376,15 +364,19 @@ pub fn reduce_inputs<'a, R: TexReducer>(
     drop(tx);
 
     for result in rx.iter() {
-        if result
-            .and_then(|t| reduce_input_finish(red, t.0, t.1, cache, indices, status))
-            .is_err()
-        {
-            // At this point, we've already launched everything, so we can't
-            // give up early anymore; and the child process or inner callback
-            // should have displayed the error.
-            n_failures += 1;
-        }
+        let ocd = match result {
+            Ok(ocd) => ocd,
+
+            Err(_) => {
+                // At this point, we've already launched everything, so we can't
+                // give up early anymore; and the child process or inner callback
+                // should have displayed the error.
+                n_failures += 1;
+                continue;
+            }
+        };
+
+        process_input_finish(ocd, cache, indices, status);
     }
 
     ensure!(
@@ -397,7 +389,7 @@ pub fn reduce_inputs<'a, R: TexReducer>(
     Ok(n_tasks)
 }
 
-fn reduce_input_prep<R: TexReducer>(
+fn process_input_prep<R: TexProcessor>(
     red: &mut R,
     input: RuntimeEntityIdent,
     cache: &mut Cache,
@@ -415,29 +407,15 @@ fn reduce_input_prep<R: TexReducer>(
     Ok(Some(driver))
 }
 
-fn reduce_input_finish<R: TexReducer>(
-    red: &mut R,
-    mut ocd: OpCacheData,
-    item: <<R as TexReducer>::Worker as WorkerDriver>::Item,
+fn process_input_finish(
+    ocd: OpCacheData,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
-) -> Result<(), WorkerError<()>> {
-    if let Err(e) = red.finish_item(item, &mut ocd) {
-        let inner = match e {
-            WorkerError::General(ref i) => i,
-            WorkerError::Specific(ref i) => i,
-        };
-
-        tt_error!(status, "failed to finish build step"; inner);
-        return Err(e.map(|_| ()));
-    }
-
+) {
+    // Since any failure only involves the caching step, not the actaul build
+    // operation, we'll report it but not flag the error at a higher level.
     if let Err(e) = cache.finalize_operation(ocd, indices) {
-        // Since this only involves the caching step, not the actaul build
-        // operation, we'll report it but not flag the error at a higher level.
         tt_error!(status, "failed to save caching information for a build step"; e);
     }
-
-    Ok(())
 }

@@ -31,17 +31,17 @@ use crate::{
     operation::{DigestComputer, DigestData, OpOutputStream, RuntimeEntityIdent},
     ostry,
     stry,
-    texworker::{TexReducer, WorkerDriver, WorkerError, WorkerResultExt},
+    tex_pass::{TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
 };
 
 /// This type manages the execution of the set of pass-1 TeX jobs.
 #[derive(Debug)]
-pub struct Pass1Reducer {
+pub struct Pass1Processor {
     assets: AssetSpecification,
     inputs_index_id: IndexId,
 }
 
-impl TexReducer for Pass1Reducer {
+impl TexProcessor for Pass1Processor {
     /// This type is sent to a worker thread to drive an actual TeX process and
     /// return any results that we care about at runtime.
     type Worker = Pass1Driver;
@@ -54,40 +54,26 @@ impl TexReducer for Pass1Reducer {
         Pass1Driver::new(input, indices)
     }
 
-    fn finish_item(
-        &mut self,
-        item: Pass1Result,
-        ocd: &mut OpCacheData,
-    ) -> Result<(), WorkerError<Error>> {
-        let (entity, size) = stry!(item.assets.close());
-        ocd.add_output_with_value(entity.ident, entity.value_digest, size);
-
-        let (entity, size) = stry!(item.metadata.close());
-        ocd.add_output_with_value(entity.ident, entity.value_digest, size);
-
-        //match self.process_item_inner(id, item, &mut status) {
-        //    Ok(index_refs) => {
-        //        // This function only fails if the references for the given input have
-        //        // already been logged, which should never happen to us.
-        //        self.indices.log_references(id, index_refs).unwrap();
-        //    }
-        //
-        //    Err(e) => {
-        //        self.indices.log_references(id, vec![]).unwrap();
-        //        tt_error!(status, "failed to process pass 1 data"; e);
-        //        return Err(WorkerError::Specific(()));
-        //    }
-        //}
-
-        Ok(())
-    }
+    //match self.process_item_inner(id, item, &mut status) {
+    //    Ok(index_refs) => {
+    //        // This function only fails if the references for the given input have
+    //        // already been logged, which should never happen to us.
+    //        self.indices.log_references(id, index_refs).unwrap();
+    //    }
+    //
+    //    Err(e) => {
+    //        self.indices.log_references(id, vec![]).unwrap();
+    //        tt_error!(status, "failed to process pass 1 data"; e);
+    //        return Err(WorkerError::Specific(()));
+    //    }
+    //}
 }
 
-impl Pass1Reducer {
+impl Pass1Processor {
     pub fn new(indices: &IndexCollection) -> Self {
         let inputs_index_id = indices.get_index("inputs").unwrap();
 
-        Pass1Reducer {
+        Pass1Processor {
             assets: Default::default(),
             inputs_index_id,
         }
@@ -258,8 +244,6 @@ impl Pass1Driver {
 }
 
 impl WorkerDriver for Pass1Driver {
-    type Item = Pass1Result;
-
     fn operation_ident(&self) -> DigestData {
         self.opid.clone()
     }
@@ -290,14 +274,16 @@ impl WorkerDriver for Pass1Driver {
         }
     }
 
-    fn finish(self) -> (OpCacheData, Self::Item) {
-        (
-            self.cache_data,
-            Pass1Result {
-                assets: self.assets,
-                metadata: self.metadata,
-            },
-        )
+    fn finish(mut self) -> Result<OpCacheData, WorkerError<Error>> {
+        let (entity, size) = stry!(self.assets.close());
+        self.cache_data
+            .add_output_with_value(entity.ident, entity.value_digest, size);
+
+        let (entity, size) = stry!(self.metadata.close());
+        self.cache_data
+            .add_output_with_value(entity.ident, entity.value_digest, size);
+
+        Ok(self.cache_data)
     }
 }
 
