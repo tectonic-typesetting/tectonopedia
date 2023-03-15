@@ -6,9 +6,9 @@
 use sha2::Digest;
 use std::{
     collections::HashMap,
-    fmt::Write,
+    fmt::Write as FmtWrite,
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
 };
 use string_interner::{StringInterner, Symbol};
@@ -20,7 +20,7 @@ use crate::{
     holey_vec::HoleyVec,
     metadata::Metadatum,
     multivec::MultiVec,
-    operation::{DigestComputer, PersistEntityIdent, RuntimeEntityIdent},
+    operation::{DigestComputer, OpOutputStream, PersistEntityIdent, RuntimeEntityIdent},
     tex_escape::encode_tex_to_string,
     worker_status::WorkerStatusBackend,
     InputId,
@@ -136,6 +136,48 @@ impl Index {
 
     fn iter(&self) -> impl IntoIterator<Item = (EntryId, &str)> {
         self.entries.into_iter()
+    }
+
+    /// Serialize this index in CSV format.
+    fn write<W: Write>(
+        &self,
+        dest: W,
+        outputs_index: &Index,
+        fragments_index: &Index,
+    ) -> Result<W> {
+        let mut w = csv::Writer::from_writer(dest);
+
+        w.write_record(&[
+            "entry",
+            "loc_output",
+            "loc_fragment",
+            "text_tex",
+            "text_plain",
+        ])?;
+
+        for (entry_id, entry_text) in self.entries.into_iter() {
+            let (loc_output, loc_fragment) = self
+                .locs
+                .get_holey_slot(entry_id.to_usize())
+                .map(|loc| {
+                    (
+                        outputs_index.resolve(loc.output),
+                        fragments_index.resolve(loc.fragment),
+                    )
+                })
+                .unwrap_or(("", ""));
+
+            let (text_tex, text_plain) = self
+                .texts
+                .get_holey_slot(entry_id.to_usize())
+                .map(|etext| (etext.tex, etext.plain))
+                .unwrap_or((String::new(), String::new()));
+
+            let rec = &[entry_text, loc_output, loc_fragment, &text_tex, &text_plain];
+            w.write_record(rec)?;
+        }
+
+        Ok(w.into_inner().map_err(|e| e.into_error())?)
     }
 }
 
@@ -675,7 +717,52 @@ pub fn maybe_indexing_operation(
         ["failed to validate cross-references"]
     );
 
-    // TODO: write the results to a damn file!
+    // Yay, indices are good. Write them to disk. First we need to create the
+    // entity IDs for our output files, since doing so requires a mutable ref to
+    // the indices.
+
+    let mut index_file_names: Vec<String> = indices.indices[INDEX_OF_INDICES_INDEX]
+        .iter()
+        .into_iter()
+        .map(|t| format!("cache/idx/{}.csv", t.1))
+        .collect();
+
+    let index_files: Vec<_> = index_file_names
+        .drain(..)
+        .map(|p| RuntimeEntityIdent::new_other_file(p, indices))
+        .collect();
+
+    // Now we can write everything out.
+
+    let ioi_index = &indices.indices[INDEX_OF_INDICES_INDEX];
+    let outputs_index = &indices.indices[OUTPUTS_INDEX_INDEX];
+    let fragments_index = &indices.indices[FRAGMENTS_INDEX_INDEX];
+
+    for (index_id, index_name) in ioi_index.iter() {
+        // Skip internal indices that won't be used directly by TeX
+        // files and should be rebuilt properly on the fly.
+
+        match index_name {
+            "ioi" | "otherpaths" | "fragments" => continue,
+            _ => {}
+        }
+
+        // OK, we should write this one out.
+
+        let index_id = index_id.to_usize();
+        let index = &indices.indices[index_id];
+        let stream = OpOutputStream::new(index_files[index_id], indices)?;
+        let mut stream = index.write(stream, outputs_index, fragments_index)?;
+        let (entity, size) = stream.close()?;
+        ocd.add_output_with_value(index_files[index_id], entity.value_digest, size);
+    }
+
+    // Cache it and we're done!
+
+    atry!(
+        cache.finalize_operation(ocd, indices);
+        ["failed to store caching information for indexing operation"]
+    );
 
     Ok(())
 }
