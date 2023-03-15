@@ -739,6 +739,8 @@ pub fn maybe_indexing_operation(
     let fragments_index = &indices.indices[FRAGMENTS_INDEX_INDEX];
 
     for (index_id, index_name) in ioi_index.iter() {
+        let index_id: EntryId = index_id; // need this to de-confuse rust-analyzer
+
         // Skip internal indices that won't be used directly by TeX
         // files and should be rebuilt properly on the fly.
 
