@@ -3,6 +3,7 @@
 
 #![allow(unused)]
 
+use sha2::Digest;
 use std::{
     collections::HashMap,
     fmt::Write,
@@ -19,7 +20,7 @@ use crate::{
     holey_vec::HoleyVec,
     metadata::Metadatum,
     multivec::MultiVec,
-    operation::{PersistEntityIdent, RuntimeEntityIdent},
+    operation::{DigestComputer, PersistEntityIdent, RuntimeEntityIdent},
     tex_escape::encode_tex_to_string,
     worker_status::WorkerStatusBackend,
     InputId,
@@ -38,6 +39,7 @@ struct Index {
 impl Index {
     /// Ensure that the specified name exists in the index.
     fn reference(&mut self, name: impl AsRef<str>) -> EntryId {
+        let name = name.as_ref();
         self.entries.get_or_intern(name)
     }
 
@@ -577,169 +579,6 @@ impl IndexCollection {
             PersistEntityIdent::OtherFile(p) => self.make_other_file_ident(p),
         }
     }
-
-    // Indexing as an operation that can be done incrementally.
-
-    /// Make an [`OpCacheData`] for the internal indexing operation.
-    //pub fn make_cache_data<'a>(
-    //    &self,
-    //    inputs: impl IntoIterator<Item = &'a String>,
-    //    cache: &mut Cache,
-    //) -> Result<OpCacheData> {
-    //    let mut data = OpCacheData::new(OpIdent::IndexInternal);
-    //
-    //    for input in inputs {
-    //        let stripped = input.strip_suffix(".tex").unwrap_or(input);
-    //        let path = format!("pass1/{stripped}.meta");
-    //        let inst = atry!(
-    //            cache.get_intermediate_file_instance(&path);
-    //            ["failed to add input file `{}`", path]
-    //        );
-    //        data.add_input(inst);
-    //    }
-    //
-    //    for (index_id, index_name) in self.indices[INDEX_OF_INDICES_INDEX].iter() {
-    //        data.add_output(cache.get_intermediate_file_ident(format!("index/{index_name}.txt")));
-    //    }
-    //
-    //    Ok(data)
-    //}
-
-    fn load_metadata(
-        &mut self,
-        input_relpath: &str,
-        cache: &mut Cache,
-        status: &mut dyn StatusBackend,
-    ) -> Result<impl IntoIterator<Item = IndexRef>> {
-        let outputs_id = self.get_index("outputs").unwrap();
-        let mut cur_output = None;
-        let mut index_refs = HashMap::new();
-
-        /// gross to create this ourselves, but not convenient to pass
-        /// the input entity idents around either.
-        let mut meta_path = PathBuf::new();
-        meta_path.push("cache");
-        meta_path.push(input_relpath);
-
-        let meta_file = atry!(
-            File::open(&meta_path);
-            ["failed to open input `{}`", meta_path.display()]
-        );
-
-        let meta_buf = BufReader::new(meta_file);
-
-        for line in meta_buf.lines() {
-            let line = atry!(
-                line;
-                ["failed to read input `{}`", meta_path.display()]
-            );
-
-            match Metadatum::parse(&line)? {
-                Metadatum::Output(path) => {
-                    // TODO: make sure there are no redundant outputs
-                    cur_output = Some(self.reference_by_id(outputs_id, path));
-                }
-
-                Metadatum::IndexDef {
-                    index,
-                    entry,
-                    fragment,
-                } => {
-                    if let Err(e) = self.reference(index, entry) {
-                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
-                        continue;
-                    }
-
-                    let co = match cur_output.as_ref() {
-                        Some(o) => *o,
-                        None => {
-                            tt_warning!(status, "attempt to define entry `{}` in index `{}` before an output has been specified", entry, index);
-                            continue;
-                        }
-                    };
-
-                    let loc = self.make_location_by_id(co, fragment);
-
-                    if let Err(e) = self.define_loc(index, entry, loc) {
-                        // The error here will contain the contextual information.
-                        tt_warning!(status, "couldn't define an index entry"; e);
-                    }
-                }
-
-                Metadatum::IndexRef {
-                    index,
-                    entry,
-                    flags,
-                } => {
-                    let ie = match self.reference_to_entry(index, entry) {
-                        Ok(ie) => ie,
-
-                        Err(e) => {
-                            tt_warning!(status, "couldn't reference entry `{}` in index `{}`", entry, index; e);
-                            continue;
-                        }
-                    };
-
-                    let cur_flags = index_refs.entry(ie).or_default();
-                    *cur_flags |= flags;
-                }
-
-                Metadatum::IndexText {
-                    index,
-                    entry,
-                    tex,
-                    plain,
-                } => {
-                    if let Err(e) = self.reference(index, entry) {
-                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
-                        continue;
-                    }
-
-                    let text = EntryText {
-                        tex: tex.to_owned(),
-                        plain: plain.to_owned(),
-                    };
-
-                    if let Err(e) = self.define_text(index, entry, text) {
-                        // The error here will contain the contextual information.
-                        tt_warning!(status, "couldn't define the text of an index entry"; e);
-                    }
-                }
-            }
-        }
-
-        Ok(index_refs
-            .into_iter()
-            .map(|((index, entry), flags)| IndexRef {
-                index,
-                entry,
-                flags,
-            }))
-    }
-
-    //pub fn do_operation<'a>(
-    //    &self,
-    //    data: OpCacheData,
-    //    inputs: impl IntoIterator<Item = &'a String>,
-    //    cache: &mut Cache,
-    //    status: &mut dyn StatusBackend,
-    //) -> Result<()> {
-    //    for input in inputs {
-    //        let stripped = input.strip_suffix(".tex").unwrap_or(input);
-    //        let path = format!("pass1/{stripped}.meta");
-    //        let index_refs = atry!(
-    //            self.load_metadata(&path, cache, status);
-    //            ["failed to add input file `{}`", path]
-    //        );
-    //
-    //        atry!(
-    //            self.log_references(id, index_refs);
-    //            ["failed to log references for input `{}`", path]
-    //        );
-    //    }
-    //
-    //    Ok(())
-    //}
 }
 
 /// An reference to an entry in an index.
@@ -781,6 +620,194 @@ pub type IndexRefFlags = u8;
 pub enum IndexRefFlag {
     NeedsLoc = 1 << 0,
     NeedsText = 1 << 1,
+}
+
+// The index construction phase of the build
+
+pub fn maybe_indexing_operation(
+    indices: &mut IndexCollection,
+    metadata_ids: &[RuntimeEntityIdent],
+    cache: &mut Cache,
+    status: &mut dyn StatusBackend,
+) -> Result<()> {
+    // Set up the information about the operation. The operation identifier
+    // must include *all* inputs since if, say, we add a new one, we'll need
+    // to rerun the op, and a simple check that all of the old inputs are
+    // unchanged won't catch that.
+
+    let mut dc = DigestComputer::default();
+    dc.update("internal_index_v1");
+
+    for input in metadata_ids {
+        input.update_digest(&mut dc, indices);
+    }
+
+    let opid = dc.finalize();
+
+    let needs_rerun = atry!(
+        cache.operation_needs_rerun(&opid, indices, status);
+        ["failed to probe cache for internal indexing operation"]
+    );
+
+    if !needs_rerun {
+        return Ok(());
+    }
+
+    // It seems that we need to rerun the indexing.
+
+    let mut ocd = OpCacheData::new(opid);
+
+    for input in metadata_ids {
+        ocd.add_input(*input);
+
+        let (input_id, index_refs) = atry!(
+            load_metadata(*input, indices, cache, status);
+            ["failed to load metadata for `{:?}`", input]
+        );
+
+        // This function only fails if the references for the given input have
+        // already been logged, which should never happen to us.
+        indices.log_references(input_id, index_refs).unwrap();
+    }
+
+    atry!(
+        indices.validate_references();
+        ["failed to validate cross-references"]
+    );
+
+    // TODO: write the results to a damn file!
+
+    Ok(())
+}
+
+fn load_metadata(
+    input: RuntimeEntityIdent,
+    indices: &mut IndexCollection,
+    cache: &mut Cache,
+    status: &mut dyn StatusBackend,
+) -> Result<(InputId, impl IntoIterator<Item = IndexRef>)> {
+    let outputs_id = indices.get_index("outputs").unwrap();
+    let mut cur_output = None;
+    let mut index_refs = HashMap::new();
+
+    let meta_path = indices.path_for_runtime_ident(input).unwrap();
+
+    let meta_file = atry!(
+        File::open(&meta_path);
+        ["failed to open input `{}`", meta_path.display()]
+    );
+
+    let mut meta_buf = BufReader::new(meta_file);
+
+    let mut context = String::new();
+    atry!(
+        meta_buf.read_line(&mut context);
+        ["failed to read input `{}`", meta_path.display()]
+    );
+
+    // Note: read_line() includes the trailing newline!
+    let input_id = if let Some(input_path) = context.strip_prefix("% input ") {
+        // This can only fail if the index name is undefined, which is impossible here.
+        indices
+            .reference(INPUTS_INDEX_NAME, input_path.trim_end())
+            .unwrap()
+    } else {
+        bail!(
+            "unexpected first line of metadata file `{}`",
+            meta_path.display()
+        );
+    };
+
+    for line in meta_buf.lines() {
+        let line = atry!(
+            line;
+            ["failed to read input `{}`", meta_path.display()]
+        );
+
+        match Metadatum::parse(&line)? {
+            Metadatum::Output(path) => {
+                // TODO: make sure there are no redundant outputs
+                cur_output = Some(indices.reference_by_id(outputs_id, path));
+            }
+
+            Metadatum::IndexDef {
+                index,
+                entry,
+                fragment,
+            } => {
+                if let Err(e) = indices.reference(index, entry) {
+                    tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
+                    continue;
+                }
+
+                let co = match cur_output.as_ref() {
+                    Some(o) => *o,
+                    None => {
+                        tt_warning!(status, "attempt to define entry `{}` in index `{}` before an output has been specified", entry, index);
+                        continue;
+                    }
+                };
+
+                let loc = indices.make_location_by_id(co, fragment);
+
+                if let Err(e) = indices.define_loc(index, entry, loc) {
+                    // The error here will contain the contextual information.
+                    tt_warning!(status, "couldn't define an index entry"; e);
+                }
+            }
+
+            Metadatum::IndexRef {
+                index,
+                entry,
+                flags,
+            } => {
+                let ie = match indices.reference_to_entry(index, entry) {
+                    Ok(ie) => ie,
+
+                    Err(e) => {
+                        tt_warning!(status, "couldn't reference entry `{}` in index `{}`", entry, index; e);
+                        continue;
+                    }
+                };
+
+                let cur_flags = index_refs.entry(ie).or_default();
+                *cur_flags |= flags;
+            }
+
+            Metadatum::IndexText {
+                index,
+                entry,
+                tex,
+                plain,
+            } => {
+                if let Err(e) = indices.reference(index, entry) {
+                    tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
+                    continue;
+                }
+
+                let text = EntryText {
+                    tex: tex.to_owned(),
+                    plain: plain.to_owned(),
+                };
+
+                if let Err(e) = indices.define_text(index, entry, text) {
+                    // The error here will contain the contextual information.
+                    tt_warning!(status, "couldn't define the text of an index entry"; e);
+                }
+            }
+        }
+    }
+
+    Ok((
+        input_id,
+        index_refs
+            .into_iter()
+            .map(|((index, entry), flags)| IndexRef {
+                index,
+                entry,
+                flags,
+            }),
+    ))
 }
 
 #[cfg(test)]

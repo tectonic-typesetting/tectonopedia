@@ -106,9 +106,11 @@ impl BuildArgs {
         let ninputs =
             tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
-        let (_asset_ids, _metadata_ids) = p1r.unpack();
+        let (_asset_ids, metadata_ids) = p1r.unpack();
 
         // Resolve cross-references and validate.
+
+        index::maybe_indexing_operation(&mut indices, &metadata_ids[..], &mut cache, status)?;
 
         // atry!(
         //     indices.validate_references();
