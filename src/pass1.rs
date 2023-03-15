@@ -30,7 +30,7 @@ use crate::{
     operation::{DigestComputer, DigestData, OpOutputStream, RuntimeEntityIdent},
     ostry,
     stry,
-    tex_pass::{TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
+    tex_pass::{TexOperation, TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
 };
 
 /// This type manages the execution of the set of pass-1 TeX jobs.
@@ -46,32 +46,67 @@ impl TexProcessor for Pass1Processor {
     /// return any results that we care about at runtime.
     type Worker = Pass1Driver;
 
-    fn make_worker(
+    fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,
         indices: &mut IndexCollection,
+    ) -> Pass1OpInfo {
+        // Generate the ID of this operation
+        let mut dc = DigestComputer::default();
+        dc.update("pass1_v2");
+        input.update_digest(&mut dc, indices);
+        let opid = dc.finalize();
+
+        // Figure out the output idents.
+
+        let stripped = {
+            let input_relpath = indices.relpath_for_tex_source(input).unwrap();
+            input_relpath
+                .strip_suffix(".tex")
+                .unwrap_or(input_relpath)
+                .to_owned()
+        };
+
+        let assets_id =
+            RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.assets"), indices);
+
+        let metadata_id =
+            RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.meta"), indices);
+
+        Pass1OpInfo {
+            opid,
+            input_id: input,
+            assets_id,
+            metadata_id,
+        }
+    }
+
+    fn make_worker(
+        &mut self,
+        opinfo: Pass1OpInfo,
+        indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>> {
-        Pass1Driver::new(input, indices)
+        Pass1Driver::new(opinfo, indices)
     }
 
-    fn accumulate_output(&mut self, item: Pass1Result) {
-        self.asset_files.push(item.assets_id);
-        self.metadata_files.push(item.metadata_id);
+    fn accumulate_output(&mut self, opinfo: Pass1OpInfo) {
+        self.asset_files.push(opinfo.assets_id);
+        self.metadata_files.push(opinfo.metadata_id);
     }
+}
 
-    //match self.process_item_inner(id, item, &mut status) {
-    //    Ok(index_refs) => {
-    //        // This function only fails if the references for the given input have
-    //        // already been logged, which should never happen to us.
-    //        self.indices.log_references(id, index_refs).unwrap();
-    //    }
-    //
-    //    Err(e) => {
-    //        self.indices.log_references(id, vec![]).unwrap();
-    //        tt_error!(status, "failed to process pass 1 data"; e);
-    //        return Err(WorkerError::Specific(()));
-    //    }
-    //}
+#[derive(Debug)]
+pub struct Pass1OpInfo {
+    opid: DigestData,
+    input_id: RuntimeEntityIdent,
+    assets_id: RuntimeEntityIdent,
+    metadata_id: RuntimeEntityIdent,
+}
+
+impl TexOperation for Pass1OpInfo {
+    fn operation_ident(&self) -> DigestData {
+        self.opid.clone()
+    }
 }
 
 impl Pass1Processor {
@@ -194,7 +229,7 @@ impl Pass1Processor {
 
 #[derive(Debug)]
 pub struct Pass1Driver {
-    opid: DigestData,
+    opinfo: Pass1OpInfo,
     input_path: PathBuf,
     cache_data: OpCacheData,
     assets: OpOutputStream,
@@ -203,40 +238,18 @@ pub struct Pass1Driver {
 }
 
 impl Pass1Driver {
-    fn new(
-        input: RuntimeEntityIdent,
-        indices: &mut IndexCollection,
-    ) -> Result<Self, WorkerError<Error>> {
-        // Generate the ID of this operation
-        let mut dc = DigestComputer::default();
-        dc.update("pass1_v2");
-        input.update_digest(&mut dc, indices);
-        let opid = dc.finalize();
+    fn new(opinfo: Pass1OpInfo, indices: &mut IndexCollection) -> Result<Self, WorkerError<Error>> {
+        let input_path = indices.path_for_runtime_ident(opinfo.input_id).unwrap();
 
-        let input_path = indices.path_for_runtime_ident(input).unwrap();
+        let mut cache_data = OpCacheData::new(opinfo.opid);
+        cache_data.add_input(opinfo.input_id);
 
-        let mut cache_data = OpCacheData::new(opid);
-        cache_data.add_input(input);
+        // We'll add the outputs to the cache data at the end of the operation,
+        // so that we can give the cache a hint about their final size and
+        // digest.
 
-        // Specify the outputs. We add them to the cache data at the end of the
-        // operation, so that we can give the cache a hint about their final
-        // size and digest.
-
-        let stripped = {
-            let input_relpath = indices.relpath_for_tex_source(input).unwrap();
-            input_relpath
-                .strip_suffix(".tex")
-                .unwrap_or(input_relpath)
-                .to_owned()
-        };
-
-        let assets_id =
-            RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.assets"), indices);
-        let assets = stry!(OpOutputStream::new(assets_id, indices));
-
-        let meta_id =
-            RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.meta"), indices);
-        let mut metadata = stry!(OpOutputStream::new(meta_id, indices));
+        let assets = stry!(OpOutputStream::new(opinfo.assets_id, indices));
+        let mut metadata = stry!(OpOutputStream::new(opinfo.metadata_id, indices));
 
         // Log the path of the input file so downstream processes can easily associate
         // the indexing data with it.
@@ -244,11 +257,11 @@ impl Pass1Driver {
         stry!(writeln!(
             metadata,
             "% input {}",
-            indices.relpath_for_tex_source(input).unwrap()
+            indices.relpath_for_tex_source(opinfo.input_id).unwrap()
         ));
 
         Ok(Pass1Driver {
-            opid,
+            opinfo,
             input_path,
             cache_data,
             assets,
@@ -259,11 +272,7 @@ impl Pass1Driver {
 }
 
 impl WorkerDriver for Pass1Driver {
-    type Item = Pass1Result;
-
-    fn operation_ident(&self) -> DigestData {
-        self.opid.clone()
-    }
+    type OpInfo = Pass1OpInfo;
 
     fn init_command(&self, cmd: &mut Command, _task_num: usize) {
         cmd.arg("first-pass-impl").arg(&self.input_path);
@@ -291,7 +300,7 @@ impl WorkerDriver for Pass1Driver {
         }
     }
 
-    fn finish(mut self) -> Result<(OpCacheData, Pass1Result), WorkerError<Error>> {
+    fn finish(mut self) -> Result<(OpCacheData, Pass1OpInfo), WorkerError<Error>> {
         let (assets_entity, size) = stry!(self.assets.close());
         self.cache_data.add_output_with_value(
             assets_entity.ident,
@@ -303,20 +312,8 @@ impl WorkerDriver for Pass1Driver {
         self.cache_data
             .add_output_with_value(meta_entity.ident, meta_entity.value_digest, size);
 
-        Ok((
-            self.cache_data,
-            Pass1Result {
-                assets_id: assets_entity.ident,
-                metadata_id: meta_entity.ident,
-            },
-        ))
+        Ok((self.cache_data, self.opinfo))
     }
-}
-
-#[derive(Debug)]
-pub struct Pass1Result {
-    assets_id: RuntimeEntityIdent,
-    metadata_id: RuntimeEntityIdent,
 }
 
 #[derive(Args, Debug)]

@@ -29,7 +29,7 @@ use crate::{
     ogtry,
     operation::{DigestData, RuntimeEntityIdent},
     ostry, stry,
-    tex_pass::{TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
+    tex_pass::{TexOperation, TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
     InputId,
 };
 
@@ -46,9 +46,13 @@ pub struct Pass2Processor {
 impl TexProcessor for Pass2Processor {
     type Worker = Pass2Driver;
 
+    fn make_op_info(&mut self, input: RuntimeEntityIdent, indices: &mut IndexCollection) -> () {
+        ()
+    }
+
     fn make_worker(
         &mut self,
-        input: RuntimeEntityIdent,
+        opinfo: (),
         indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>> {
         let rrtex = self
@@ -58,6 +62,13 @@ impl TexProcessor for Pass2Processor {
     }
 
     fn accumulate_output(&mut self, _item: ()) {}
+}
+
+impl TexOperation for () {
+    // yikes!
+    fn operation_ident(&self) -> DigestData {
+        unreachable!();
+    }
 }
 
 impl Pass2Processor {
@@ -116,11 +127,7 @@ impl Pass2Driver {
 }
 
 impl WorkerDriver for Pass2Driver {
-    type Item = ();
-
-    fn operation_ident(&self) -> DigestData {
-        unreachable!()
-    }
+    type OpInfo = ();
 
     fn init_command(&self, cmd: &mut Command, task_num: usize) {
         unreachable!();

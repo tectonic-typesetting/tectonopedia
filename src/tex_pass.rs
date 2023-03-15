@@ -22,7 +22,6 @@ use crate::{
     cache::{Cache, OpCacheData},
     index::IndexCollection,
     operation::{DigestData, RuntimeEntityIdent},
-    stry,
     worker_status::WorkerStatusBackend,
 };
 
@@ -131,13 +130,16 @@ macro_rules! stry {
 /// worker threads. In that worker thread, it then interacts closely with the
 /// TeX subprocess. Once that subprocess exits, it is consumed.
 pub trait WorkerDriver: Send {
-    type Item: Send + 'static;
-
-    /// Get a digest uniquely identifying this processing task.
+    /// This type encodes basic information about the TeX operation for this
+    /// input.
     ///
-    /// The digest will be used to check in the build cache and see if this
-    /// operation can actually be skipped.
-    fn operation_ident(&self) -> DigestData;
+    /// This type will be created by the processor and used to determine if the
+    /// task needs to be rerun. If the task does need rerunning, it should be
+    /// sent over to its worker driver and eventually returned by the
+    /// [`Self::finish`] method. But if the cached task result is OK, the item
+    /// will be processed at the top level without the worker ever being
+    /// created.
+    type OpInfo: TexOperation + 'static;
 
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
@@ -156,7 +158,7 @@ pub trait WorkerDriver: Send {
     /// The result type returns information for the operation cache and any data
     /// that should be aggregated by the processor. This method is only called
     /// if the child process exits successfully.
-    fn finish(self) -> Result<(OpCacheData, Self::Item), WorkerError<Error>>;
+    fn finish(self) -> Result<(OpCacheData, Self::OpInfo), WorkerError<Error>>;
 }
 
 fn process_one_input<W: WorkerDriver>(
@@ -164,7 +166,7 @@ fn process_one_input<W: WorkerDriver>(
     self_path: PathBuf,
     n_tasks: usize,
     mut status: Box<dyn StatusBackend>,
-) -> Result<(OpCacheData, W::Item), WorkerError<()>> {
+) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
     // This function should fully report out any errors that it encounters,
     // since it can only propagate a stateless flag as to whether a "specific"
     // or "general" error occurred; it can't propagate out detailed information.
@@ -259,21 +261,42 @@ pub trait TexProcessor {
     /// `Item` type is returned to the main thread.
     type Worker: WorkerDriver + 'static;
 
+    /// Create an operation info object.
+    ///
+    /// This function is called in the main thread. The information will be used
+    /// to determine whether this particular job needs to be rerun. If so, a worker
+    /// will be created and will take ownership of the info
+    fn make_op_info(
+        &mut self,
+        input: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
+    ) -> <Self::Worker as WorkerDriver>::OpInfo;
+
     /// Create a worker object.
     ///
     /// This function is called in the main thread. The worker will be sent to a
     /// worker thread and then drive a TeX subprocess.
     fn make_worker(
         &mut self,
-        input: RuntimeEntityIdent,
+        opinfo: <Self::Worker as WorkerDriver>::OpInfo,
         indices: &mut IndexCollection,
     ) -> Result<Self::Worker, WorkerError<Error>>;
 
-    /// Accumulate an output from one of the workers.
+    /// Accumulate information about an operation.
     ///
-    /// This function is called on the main thread with the "item" produced by a
-    /// worker.
-    fn accumulate_output(&mut self, item: <Self::Worker as WorkerDriver>::Item);
+    /// This function is called on the main thread with a [`Self::OpInfo`]
+    /// value. The value may or may not have been passed through a
+    /// [`Self::Worker`], depending on whether the cache indicated that the
+    /// operation actually needed to be rerun or not.
+    fn accumulate_output(&mut self, opinfo: <Self::Worker as WorkerDriver>::OpInfo);
+}
+
+pub trait TexOperation: Send {
+    /// Get a digest uniquely identifying this processing task.
+    ///
+    /// The digest will be used to check in the build cache and see if this
+    /// operation can actually be skipped.
+    fn operation_ident(&self) -> DigestData;
 }
 
 pub fn process_inputs<'a, P: TexProcessor>(
@@ -304,9 +327,29 @@ pub fn process_inputs<'a, P: TexProcessor>(
             Box::new(WorkerStatusBackend::new(path)) as Box<dyn StatusBackend + Send>
         };
 
-        let maybe_info = match process_input_prep(proc, input, cache, indices, item_status.as_mut())
-        {
-            Ok(w) => w,
+        let opinfo = proc.make_op_info(input, indices);
+        let opid = opinfo.operation_ident();
+
+        // If the cache query fails, that's definitely something that should
+        // cause us to bail immediately.
+        let needs_rerun = atry!(
+            cache.operation_needs_rerun(&opid, indices, status);
+            ["failed to query build cache"]
+        );
+
+        if !needs_rerun {
+            // If we're not going to fire off a thread to process this task,
+            // we just accumulate it into the results directly and we're done.
+            tt_warning!(status, "skipping input `{:?}`!!!", input);
+            proc.accumulate_output(opinfo);
+            continue;
+        }
+
+        // If we're still here, it looks like we actually need to launch
+        // a TeX job for this input.
+
+        let driver = match proc.make_worker(opinfo, indices) {
+            Ok(d) => d,
 
             Err(WorkerError::General(e)) => {
                 n_failures += 1;
@@ -322,23 +365,22 @@ pub fn process_inputs<'a, P: TexProcessor>(
                 // builds.
                 n_failures += 1;
                 tt_error!(item_status, "prep failed"; e);
+
+                // By `continue`-ing here, we are discarding the opinfo and
+                // not including this input in any subsequent processing.
+                // That's OK since we'll abandon the build after this pass.
                 continue;
             }
         };
 
-        if let Some(driver) = maybe_info {
-            let tx = tx.clone();
-            let sp = self_path.clone();
+        let tx = tx.clone();
+        let sp = self_path.clone();
 
-            pool.execute(move || {
-                tx.send(process_one_input(driver, sp, n_tasks, item_status))
-                    .expect("channel waits for pool result");
-            });
-            n_tasks += 1;
-        } else {
-            // We can use the cached results for this task.
-            continue;
-        }
+        pool.execute(move || {
+            tx.send(process_one_input(driver, sp, n_tasks, item_status))
+                .expect("channel waits for pool result");
+        });
+        n_tasks += 1;
 
         // Deal with results as we're doing the walk, if there are any.
 
@@ -370,6 +412,8 @@ pub fn process_inputs<'a, P: TexProcessor>(
         }
     }
 
+    // Handle all of the jobs that finish after we're done walking.
+
     drop(tx);
 
     for result in rx.iter() {
@@ -388,6 +432,8 @@ pub fn process_inputs<'a, P: TexProcessor>(
         process_input_finish(proc, tup.0, tup.1, cache, indices, status);
     }
 
+    // OK, all done!
+
     ensure!(
         n_failures == 0,
         "{} out of {} build inputs failed",
@@ -398,28 +444,10 @@ pub fn process_inputs<'a, P: TexProcessor>(
     Ok(n_tasks)
 }
 
-fn process_input_prep<P: TexProcessor>(
-    proc: &mut P,
-    input: RuntimeEntityIdent,
-    cache: &mut Cache,
-    indices: &mut IndexCollection,
-    status: &mut dyn StatusBackend,
-) -> Result<Option<P::Worker>, WorkerError<Error>> {
-    let driver = proc.make_worker(input, indices)?;
-    let opid = driver.operation_ident();
-
-    if !stry!(cache.operation_needs_rerun(&opid, indices, status)) {
-        tt_warning!(status, "skipping input `{:?}`!!!", input);
-        return Ok(None);
-    }
-
-    Ok(Some(driver))
-}
-
 fn process_input_finish<P: TexProcessor>(
     proc: &mut P,
     ocd: OpCacheData,
-    item: <<P as TexProcessor>::Worker as WorkerDriver>::Item,
+    item: <<P as TexProcessor>::Worker as WorkerDriver>::OpInfo,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
