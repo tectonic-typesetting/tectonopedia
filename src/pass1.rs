@@ -209,7 +209,7 @@ impl Pass1Driver {
     ) -> Result<Self, WorkerError<Error>> {
         // Generate the ID of this operation
         let mut dc = DigestComputer::default();
-        dc.update("pass1_v1");
+        dc.update("pass1_v2");
         input.update_digest(&mut dc, indices);
         let opid = dc.finalize();
 
@@ -236,7 +236,16 @@ impl Pass1Driver {
 
         let meta_id =
             RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.meta"), indices);
-        let metadata = stry!(OpOutputStream::new(meta_id, indices));
+        let mut metadata = stry!(OpOutputStream::new(meta_id, indices));
+
+        // Log the path of the input file so downstream processes can easily associate
+        // the indexing data with it.
+
+        stry!(writeln!(
+            metadata,
+            "% input {}",
+            indices.relpath_for_tex_source(input).unwrap()
+        ));
 
         Ok(Pass1Driver {
             opid,
