@@ -139,12 +139,17 @@ impl Index {
     }
 
     /// Serialize this index in CSV format.
+    ///
+    /// We sort by entry name to hopefully keep the outputs reproducible.
     fn write<W: Write>(
         &self,
         dest: W,
         outputs_index: &Index,
         fragments_index: &Index,
     ) -> Result<W> {
+        let mut all: Vec<_> = self.entries.into_iter().collect();
+        all.sort_by_key(|t| t.1);
+
         let mut w = csv::Writer::from_writer(dest);
 
         w.write_record(&[
@@ -155,7 +160,7 @@ impl Index {
             "text_plain",
         ])?;
 
-        for (entry_id, entry_text) in self.entries.into_iter() {
+        for (entry_id, entry_text) in all.drain(..) {
             let (loc_output, loc_fragment) = self
                 .locs
                 .get_holey_slot(entry_id.to_usize())
@@ -678,7 +683,7 @@ pub fn maybe_indexing_operation(
     // unchanged won't catch that.
 
     let mut dc = DigestComputer::default();
-    dc.update("internal_index_v1");
+    dc.update("internal_index_v2");
 
     for input in metadata_ids {
         input.update_digest(&mut dc, indices);
