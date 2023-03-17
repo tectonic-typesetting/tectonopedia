@@ -560,6 +560,15 @@ impl IndexCollection {
         RuntimeEntityIdent::TexSourceFile(id)
     }
 
+    /// Create an entity identifier for an output file.
+    ///
+    /// This returns a value of [`RuntimeEntityIdent::OutputFile`].
+    #[inline(always)]
+    pub fn make_output_file_ident(&mut self, relpath: impl AsRef<str>) -> RuntimeEntityIdent {
+        let id = self.indices[OUTPUTS_INDEX_INDEX].reference(relpath);
+        RuntimeEntityIdent::OutputFile(id)
+    }
+
     /// Create an entity identifier for a file not matching one of the
     /// other categories.
     ///
@@ -578,6 +587,11 @@ impl IndexCollection {
                 PersistEntityIdent::TexSourceFile(p.to_owned())
             }
 
+            RuntimeEntityIdent::OutputFile(s) => {
+                let p = self.indices[OUTPUTS_INDEX_INDEX].resolve(s);
+                PersistEntityIdent::OutputFile(p.to_owned())
+            }
+
             RuntimeEntityIdent::OtherFile(s) => {
                 let p = self.indices[OTHER_PATHS_INDEX_INDEX].resolve(s);
                 PersistEntityIdent::OtherFile(p.to_owned())
@@ -592,6 +606,13 @@ impl IndexCollection {
             RuntimeEntityIdent::TexSourceFile(s) => {
                 let mut p = PathBuf::new();
                 p.push(self.indices[INPUTS_INDEX_INDEX].resolve(s));
+                p
+            }
+
+            RuntimeEntityIdent::OutputFile(s) => {
+                let mut p = self.root.clone();
+                p.push("staging");
+                p.push(self.indices[OUTPUTS_INDEX_INDEX].resolve(s));
                 p
             }
 
@@ -623,6 +644,7 @@ impl IndexCollection {
     pub fn runtime_ident(&mut self, pei: &PersistEntityIdent) -> RuntimeEntityIdent {
         match pei {
             PersistEntityIdent::TexSourceFile(p) => self.make_tex_source_ident(p),
+            PersistEntityIdent::OutputFile(p) => self.make_output_file_ident(p),
             PersistEntityIdent::OtherFile(p) => self.make_other_file_ident(p),
         }
     }

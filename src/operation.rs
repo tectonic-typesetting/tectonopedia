@@ -60,11 +60,18 @@ type PathId = InputId;
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum PersistEntityIdent {
     /// A TeX input file. The string value is the path to the file in question,
-    /// relative to the `txt` tree.
+    /// relative to the project root.
     ///
     /// These inputs are handled specially so that they can map 1:1 to the "inputs"
     /// index maintained by an [`IndexCollection`].
     TexSourceFile(String),
+
+    /// An output file. The string value is the path to the file in question,
+    /// relative to the `staging` or `build` tree.
+    ///
+    /// These inputs are handled specially so that they can map 1:1 to the "outputs"
+    /// index maintained by an [`IndexCollection`].
+    OutputFile(String),
 
     /// A file that does not belong to one of the other categories. Its path is
     /// relative to the project root.
@@ -92,6 +99,13 @@ impl PersistEntityIdent {
         let p = match self {
             PersistEntityIdent::TexSourceFile(relpath) => {
                 let mut p = PathBuf::new();
+                p.push(relpath);
+                p
+            }
+
+            PersistEntityIdent::OutputFile(relpath) => {
+                let mut p = root;
+                p.push("staging");
                 p.push(relpath);
                 p
             }
@@ -161,6 +175,10 @@ pub enum RuntimeEntityIdent {
     /// relative to the project root.
     TexSourceFile(InputId),
 
+    /// An output file. The id resolves to the path to the file in question,
+    /// relative to the `staging` or `build` tree.
+    OutputFile(PathId),
+
     /// A file that does not belong to one of the other categories. The id
     /// resolves to a path relative to the project root.
     OtherFile(PathId),
@@ -173,6 +191,14 @@ impl RuntimeEntityIdent {
     /// the relative source path with an index.
     pub fn new_tex_source(relpath: impl AsRef<str>, indices: &mut IndexCollection) -> Self {
         indices.make_tex_source_ident(relpath)
+    }
+
+    /// Create a new entity for an output entity.
+    ///
+    /// This needs to go through the index collection to potentially register
+    /// the relative source path with an index.
+    pub fn new_output_file(relpath: impl AsRef<str>, indices: &mut IndexCollection) -> Self {
+        indices.make_output_file_ident(relpath)
     }
 
     /// Create a new entity for a file entity that doesn't fit one of the other
