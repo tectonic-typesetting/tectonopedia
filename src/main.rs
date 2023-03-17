@@ -103,7 +103,7 @@ impl BuildArgs {
 
         // First TeX pass of indexing and gathering font/asset information.
 
-        let mut p1r = pass1::Pass1Processor::new(&indices);
+        let mut p1r = pass1::Pass1Processor::default();
         let ninputs =
             tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");

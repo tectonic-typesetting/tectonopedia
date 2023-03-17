@@ -23,22 +23,24 @@ use tectonic_status_base::{tt_warning, StatusBackend};
 use crate::{
     cache::OpCacheData,
     gtry,
-    index::{IndexCollection, IndexId},
-    //index::{EntryText, IndexCollection, IndexId, IndexRef},
-    //metadata::Metadatum,
+    index::IndexCollection,
     ogtry,
     operation::{DigestComputer, DigestData, OpOutputStream, RuntimeEntityIdent},
-    ostry,
-    stry,
+    ostry, stry,
     tex_pass::{TexOperation, TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
 };
 
 /// This type manages the execution of the set of pass-1 TeX jobs.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Pass1Processor {
-    inputs_index_id: IndexId,
     asset_files: Vec<RuntimeEntityIdent>,
     metadata_files: Vec<RuntimeEntityIdent>,
+}
+
+impl Pass1Processor {
+    pub fn unpack(self) -> (Vec<RuntimeEntityIdent>, Vec<RuntimeEntityIdent>) {
+        (self.asset_files, self.metadata_files)
+    }
 }
 
 impl TexProcessor for Pass1Processor {
@@ -106,124 +108,6 @@ pub struct Pass1OpInfo {
 impl TexOperation for Pass1OpInfo {
     fn operation_ident(&self) -> DigestData {
         self.opid.clone()
-    }
-}
-
-impl Pass1Processor {
-    pub fn new(indices: &IndexCollection) -> Self {
-        let inputs_index_id = indices.get_index("inputs").unwrap();
-
-        Pass1Processor {
-            asset_files: Default::default(),
-            metadata_files: Default::default(),
-            inputs_index_id,
-        }
-    }
-
-    pub fn unpack(self) -> (Vec<RuntimeEntityIdent>, Vec<RuntimeEntityIdent>) {
-        (self.asset_files, self.metadata_files)
-    }
-
-    #[cfg(OLD)]
-    fn process_item_inner(
-        &mut self,
-        _id: InputId,
-        item: Pass1Driver,
-        status: &mut dyn StatusBackend,
-    ) -> Result<impl IntoIterator<Item = IndexRef>> {
-        atry!(
-            self.assets.add_from_saved(item.assets.as_bytes());
-            ["failed to import assets data"]
-        );
-
-        // Process the metadata. We coalesce index references here.
-
-        let outputs_id = self.indices.get_index("outputs").unwrap();
-        let mut cur_output = None;
-        let mut index_refs = HashMap::new();
-
-        for line in item.metadata_lines {
-            match Metadatum::parse(&line)? {
-                Metadatum::Output(path) => {
-                    // TODO: make sure there are no redundant outputs
-                    cur_output = Some(self.indices.reference_by_id(outputs_id, path));
-                }
-
-                Metadatum::IndexDef {
-                    index,
-                    entry,
-                    fragment,
-                } => {
-                    if let Err(e) = self.indices.reference(index, entry) {
-                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
-                        continue;
-                    }
-
-                    let co = match cur_output.as_ref() {
-                        Some(o) => *o,
-                        None => {
-                            tt_warning!(status, "attempt to define entry `{}` in index `{}` before an output has been specified", entry, index);
-                            continue;
-                        }
-                    };
-
-                    let loc = self.indices.make_location_by_id(co, fragment);
-
-                    if let Err(e) = self.indices.define_loc(index, entry, loc) {
-                        // The error here will contain the contextual information.
-                        tt_warning!(status, "couldn't define an index entry"; e);
-                    }
-                }
-
-                Metadatum::IndexRef {
-                    index,
-                    entry,
-                    flags,
-                } => {
-                    let ie = match self.indices.reference_to_entry(index, entry) {
-                        Ok(ie) => ie,
-
-                        Err(e) => {
-                            tt_warning!(status, "couldn't reference entry `{}` in index `{}`", entry, index; e);
-                            continue;
-                        }
-                    };
-
-                    let cur_flags = index_refs.entry(ie).or_default();
-                    *cur_flags |= flags;
-                }
-
-                Metadatum::IndexText {
-                    index,
-                    entry,
-                    tex,
-                    plain,
-                } => {
-                    if let Err(e) = self.indices.reference(index, entry) {
-                        tt_warning!(status, "couldn't define entry `{}` in index `{}`", entry, index; e);
-                        continue;
-                    }
-
-                    let text = EntryText {
-                        tex: tex.to_owned(),
-                        plain: plain.to_owned(),
-                    };
-
-                    if let Err(e) = self.indices.define_text(index, entry, text) {
-                        // The error here will contain the contextual information.
-                        tt_warning!(status, "couldn't define the text of an index entry"; e);
-                    }
-                }
-            }
-        }
-
-        Ok(index_refs
-            .into_iter()
-            .map(|((index, entry), flags)| IndexRef {
-                index,
-                entry,
-                flags,
-            }))
     }
 }
 
