@@ -270,7 +270,7 @@ pub trait TexProcessor {
         &mut self,
         input: RuntimeEntityIdent,
         indices: &mut IndexCollection,
-    ) -> <Self::Worker as WorkerDriver>::OpInfo;
+    ) -> Result<<Self::Worker as WorkerDriver>::OpInfo>;
 
     /// Create a worker object.
     ///
@@ -327,7 +327,13 @@ pub fn process_inputs<'a, P: TexProcessor>(
             Box::new(WorkerStatusBackend::new(path)) as Box<dyn StatusBackend + Send>
         };
 
-        let opinfo = proc.make_op_info(input, indices);
+        // In principle this could/should be a WorkerError, but the distinction
+        // doesn't seem super important.
+        let opinfo = atry!(
+            proc.make_op_info(input, indices);
+            ["failed to prepare operation for input `{}`", indices.relpath_for_tex_source(input).unwrap()]
+        );
+
         let opid = opinfo.operation_ident();
 
         // If the cache query fails, that's definitely something that should

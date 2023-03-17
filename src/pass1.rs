@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
     process::{ChildStdin, Command},
 };
+use string_interner::Symbol;
 use tectonic::{
     config::PersistentConfig,
     driver::{OutputFormat, PassSetting, ProcessingSessionBuilder},
@@ -23,6 +24,7 @@ use tectonic_status_base::{tt_warning, StatusBackend};
 use crate::{
     cache::OpCacheData,
     gtry,
+    holey_vec::HoleyVec,
     index::IndexCollection,
     ogtry,
     operation::{DigestComputer, DigestData, OpOutputStream, RuntimeEntityIdent},
@@ -31,15 +33,31 @@ use crate::{
 };
 
 /// This type manages the execution of the set of pass-1 TeX jobs.
+///
+/// The vectors here are managed as "holey" vectors, which effectively map from
+/// the `InputId` to the corresponding data file type. This works because input
+/// IDs start at 1 and populate small integers densely.
 #[derive(Debug, Default)]
 pub struct Pass1Processor {
-    asset_files: Vec<RuntimeEntityIdent>,
-    metadata_files: Vec<RuntimeEntityIdent>,
+    asset_files: Vec<Option<RuntimeEntityIdent>>,
+    metadata_files: Vec<Option<RuntimeEntityIdent>>,
 }
 
 impl Pass1Processor {
-    pub fn unpack(self) -> (Vec<RuntimeEntityIdent>, Vec<RuntimeEntityIdent>) {
-        (self.asset_files, self.metadata_files)
+    /// Unpack this processor into a vector of asset file IDs and metadata file
+    /// IDs.
+    ///
+    /// The "holey vector" scheme is used to ensure that these vectors are
+    /// properly indexable by input IDs; in other words, they are sorted the
+    /// same as the input index.
+    pub fn unpack(mut self) -> (Vec<RuntimeEntityIdent>, Vec<RuntimeEntityIdent>) {
+        // We only get to this point if all inputs process correctly, so we can
+        // safely unwrap our "holey" vecs.
+
+        let asset_files = self.asset_files.drain(..).map(|o| o.unwrap()).collect();
+        let metadata_files = self.metadata_files.drain(..).map(|o| o.unwrap()).collect();
+
+        (asset_files, metadata_files)
     }
 }
 
@@ -52,7 +70,7 @@ impl TexProcessor for Pass1Processor {
         &mut self,
         input: RuntimeEntityIdent,
         indices: &mut IndexCollection,
-    ) -> Pass1OpInfo {
+    ) -> Result<Pass1OpInfo> {
         // Generate the ID of this operation
         let mut dc = DigestComputer::default();
         dc.update("pass1_v2");
@@ -75,12 +93,12 @@ impl TexProcessor for Pass1Processor {
         let metadata_id =
             RuntimeEntityIdent::new_other_file(&format!("cache/pass1/{stripped}.meta"), indices);
 
-        Pass1OpInfo {
+        Ok(Pass1OpInfo {
             opid,
             input_id: input,
             assets_id,
             metadata_id,
-        }
+        })
     }
 
     fn make_worker(
@@ -92,8 +110,23 @@ impl TexProcessor for Pass1Processor {
     }
 
     fn accumulate_output(&mut self, opinfo: Pass1OpInfo) {
-        self.asset_files.push(opinfo.assets_id);
-        self.metadata_files.push(opinfo.metadata_id);
+        let input_index = match opinfo.input_id {
+            RuntimeEntityIdent::TexSourceFile(s) => s.to_usize(),
+            _ => unreachable!(),
+        };
+
+        // Inputs are only processed once, so `ensure_holey_slot_available` can
+        // never fail.
+
+        self.asset_files
+            .ensure_holey_slot_available(input_index)
+            .unwrap();
+        self.asset_files[input_index] = Some(opinfo.assets_id);
+
+        self.metadata_files
+            .ensure_holey_slot_available(input_index)
+            .unwrap();
+        self.metadata_files[input_index] = Some(opinfo.metadata_id);
     }
 }
 

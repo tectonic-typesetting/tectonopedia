@@ -1,15 +1,19 @@
-// Copyright 2022 the Tectonic Project
+// Copyright 2022-2023 the Tectonic Project
 // Licensed under the MIT License
 
-//! "Pass 1"
+//! "Pass 2"
 
 use clap::Args;
+use sha2::Digest;
 use std::{
+    collections::HashSet,
     fmt::Write as FmtWrite,
     fs::File,
     io::{BufRead, BufReader, Cursor, Write},
+    path::PathBuf,
     process::{ChildStdin, Command},
 };
+use string_interner::Symbol;
 use tectonic::{
     config::PersistentConfig,
     driver::{OutputFormat, PassSetting, ProcessingSessionBuilder},
@@ -27,7 +31,7 @@ use crate::{
     index::{IndexCollection, IndexId},
     metadata::Metadatum,
     ogtry,
-    operation::{DigestData, RuntimeEntityIdent},
+    operation::{DigestComputer, DigestData, RuntimeEntityIdent},
     ostry, stry,
     tex_pass::{TexOperation, TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
     InputId,
@@ -35,73 +39,41 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Pass2Processor {
+    merged_assets_id: RuntimeEntityIdent,
     assets: AssetSpecification,
-    indices: IndexCollection,
-    inputs_index_id: IndexId,
-    input_id: Option<InputId>,
-    entrypoints_file: File,
+    metadata_ids: Vec<RuntimeEntityIdent>,
     n_outputs: usize,
-}
-
-impl TexProcessor for Pass2Processor {
-    type Worker = Pass2Driver;
-
-    fn make_op_info(&mut self, input: RuntimeEntityIdent, indices: &mut IndexCollection) -> () {
-        ()
-    }
-
-    fn make_worker(
-        &mut self,
-        opinfo: (),
-        indices: &mut IndexCollection,
-    ) -> Result<Self::Worker, WorkerError<Error>> {
-        let rrtex = self
-            .indices
-            .get_resolved_reference_tex(self.input_id.unwrap());
-        Ok(Pass2Driver::new(rrtex, self.assets.clone()))
-    }
-
-    fn accumulate_output(&mut self, _item: ()) {}
-}
-
-impl TexOperation for () {
-    // yikes!
-    fn operation_ident(&self) -> DigestData {
-        unreachable!();
-    }
 }
 
 impl Pass2Processor {
     pub fn new(
-        assets: AssetSpecification,
-        indices: IndexCollection,
-        entrypoints_file: File,
-    ) -> Self {
-        let inputs_index_id = indices.get_index("inputs").unwrap();
+        metadata_ids: Vec<RuntimeEntityIdent>,
+        merged_assets_id: RuntimeEntityIdent,
+        indices: &IndexCollection,
+    ) -> Result<Self> {
+        // Load the merged assets info, which every TeX job will share.
 
-        Pass2Processor {
+        let mut assets = AssetSpecification::default();
+        let assets_path = indices.path_for_runtime_ident(merged_assets_id).unwrap();
+
+        let assets_file = atry!(
+            File::open(&assets_path);
+            ["failed to open input `{}`", assets_path.display()]
+        );
+
+        atry!(
+            assets.add_from_saved(assets_file);
+            ["failed to import assets data"]
+        );
+
+        // Ready to go
+
+        Ok(Pass2Processor {
+            merged_assets_id,
             assets,
-            indices,
-            inputs_index_id,
-            input_id: None,
-            entrypoints_file,
+            metadata_ids,
             n_outputs: 0,
-        }
-    }
-
-    fn process_item_inner(&mut self, _id: InputId, item: Pass2Driver) -> Result<()> {
-        for line in item.metadata_lines {
-            match Metadatum::parse(&line)? {
-                Metadatum::Output(path) => {
-                    writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", path)?;
-                    self.n_outputs += 1;
-                }
-
-                _ => {}
-            }
-        }
-
-        Ok(())
+        })
     }
 
     pub fn n_outputs(&self) -> usize {
@@ -109,29 +81,193 @@ impl Pass2Processor {
     }
 }
 
+impl TexProcessor for Pass2Processor {
+    type Worker = Pass2Driver;
+
+    fn make_op_info(
+        &mut self,
+        input: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
+    ) -> Result<Pass2OpInfo> {
+        // The vector of metadata IDs is guaranteed to be sorted so that it can
+        // be indexed by input IDs, so:
+
+        let input_index = match input {
+            RuntimeEntityIdent::TexSourceFile(s) => s.to_usize(),
+            _ => unreachable!(),
+        };
+
+        let metadata_id = self.metadata_ids[input_index];
+
+        Pass2OpInfo::new(input, metadata_id, self.merged_assets_id, indices)
+    }
+
+    fn make_worker(
+        &mut self,
+        opinfo: Pass2OpInfo,
+        indices: &mut IndexCollection,
+    ) -> Result<Self::Worker, WorkerError<Error>> {
+        let input_id = match opinfo.tex_input_id {
+            RuntimeEntityIdent::TexSourceFile(s) => s,
+            _ => unreachable!(),
+        };
+
+        let rrtex = indices.get_resolved_reference_tex(input_id);
+
+        Ok(Pass2Driver::new(
+            opinfo,
+            rrtex,
+            self.assets.clone(),
+            indices,
+        ))
+    }
+
+    fn accumulate_output(&mut self, _item: Pass2OpInfo) {}
+}
+
+#[derive(Debug)]
+pub struct Pass2OpInfo {
+    opid: DigestData,
+
+    // Inputs
+    tex_input_id: RuntimeEntityIdent,
+    merged_assets_id: RuntimeEntityIdent,
+    metadata_id: RuntimeEntityIdent,
+    index_ids: Vec<RuntimeEntityIdent>,
+
+    // Outputs
+    html_output_ids: Vec<RuntimeEntityIdent>,
+}
+
+impl Pass2OpInfo {
+    fn new(
+        input: RuntimeEntityIdent,
+        metadata_id: RuntimeEntityIdent,
+        merged_assets_id: RuntimeEntityIdent,
+        indices: &mut IndexCollection,
+    ) -> Result<Self> {
+        // Construct the operation ID. We depend on a variety inputs, but the
+        // operation is uniquely identified by its TeX input.
+
+        let mut dc = DigestComputer::default();
+        dc.update("pass2_v1");
+        input.update_digest(&mut dc, indices);
+        let opid = dc.finalize();
+
+        // We need to load the metadata file to know what indices we need and
+        // what HTML outputs will be created.
+        let mut index_names = HashSet::new();
+        let mut html_output_ids = Vec::new();
+
+        let meta_path = indices.path_for_runtime_ident(metadata_id).unwrap();
+
+        let meta_file = atry!(
+            File::open(&meta_path);
+            ["failed to open input `{}`", meta_path.display()]
+        );
+
+        let mut meta_buf = BufReader::new(meta_file);
+
+        // The header "% input <relpath>" line
+        let mut context = String::new();
+        atry!(
+            meta_buf.read_line(&mut context);
+            ["failed to read input `{}`", meta_path.display()]
+        );
+
+        for line in meta_buf.lines() {
+            let line = atry!(
+                line;
+                ["failed to read input `{}`", meta_path.display()]
+            );
+
+            match Metadatum::parse(&line)? {
+                Metadatum::Output(path) => {
+                    html_output_ids.push(RuntimeEntityIdent::new_output_file(path, indices));
+                }
+
+                Metadatum::IndexRef { index, .. } => {
+                    index_names.insert(index.to_owned());
+                }
+
+                _ => {}
+            }
+        }
+
+        let mut index_ids = Vec::new();
+
+        for index_name in index_names.drain() {
+            index_ids.push(RuntimeEntityIdent::new_other_file(
+                &format!("cache/idx/{}.csv", index_name),
+                indices,
+            ));
+        }
+
+        Ok(Pass2OpInfo {
+            opid,
+            tex_input_id: input,
+            merged_assets_id,
+            metadata_id,
+            index_ids,
+            html_output_ids,
+        })
+    }
+}
+
+impl TexOperation for Pass2OpInfo {
+    fn operation_ident(&self) -> DigestData {
+        self.opid.clone()
+    }
+}
+
 #[derive(Debug)]
 pub struct Pass2Driver {
+    opinfo: Pass2OpInfo,
+    input_path: PathBuf,
+    cache_data: OpCacheData,
     resolved_ref_tex: String,
     assets: AssetSpecification,
-    metadata_lines: Vec<String>,
 }
 
 impl Pass2Driver {
-    pub fn new(resolved_ref_tex: String, assets: AssetSpecification) -> Self {
+    pub fn new(
+        opinfo: Pass2OpInfo,
+        resolved_ref_tex: String,
+        assets: AssetSpecification,
+        indices: &mut IndexCollection,
+    ) -> Self {
+        let input_path = indices.path_for_runtime_ident(opinfo.tex_input_id).unwrap();
+
+        let mut cache_data = OpCacheData::new(opinfo.opid);
+        cache_data.add_input(opinfo.tex_input_id);
+        cache_data.add_input(opinfo.metadata_id);
+        cache_data.add_input(opinfo.merged_assets_id);
+
+        for idxid in &opinfo.index_ids {
+            cache_data.add_input(*idxid);
+        }
+
+        // These outputs are created by Tectonic, so we can't calculate their
+        // digests as we go; so might as well register them now.
+        for outid in &opinfo.html_output_ids {
+            cache_data.add_output(*outid);
+        }
+
         Pass2Driver {
+            opinfo,
+            input_path,
+            cache_data,
             resolved_ref_tex,
             assets,
-            metadata_lines: Default::default(),
         }
     }
 }
 
 impl WorkerDriver for Pass2Driver {
-    type OpInfo = ();
+    type OpInfo = Pass2OpInfo;
 
     fn init_command(&self, cmd: &mut Command, task_num: usize) {
-        unreachable!();
-        //cmd.arg("second-pass-impl").arg(path);
+        cmd.arg("second-pass-impl").arg(&self.input_path);
 
         if task_num == 0 {
             cmd.arg("--first");
@@ -143,17 +279,12 @@ impl WorkerDriver for Pass2Driver {
         self.assets.save(stdin).map_err(|e| e.into())
     }
 
-    fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
-        if let Some(rest) = record.strip_prefix("meta ") {
-            self.metadata_lines.push(rest.to_owned());
-        } else {
-            tt_warning!(status, "unrecognized pass2 stdout record: {}", record);
-        }
-    }
+    // TODO: record additional inputs if/when they are detected
 
-    fn finish(self) -> Result<(OpCacheData, ()), WorkerError<Error>> {
-        unreachable!();
-        //self
+    fn process_output_record(&mut self, _record: &str, _status: &mut dyn StatusBackend) {}
+
+    fn finish(self) -> Result<(OpCacheData, Pass2OpInfo), WorkerError<Error>> {
+        Ok((self.cache_data, self.opinfo))
     }
 }
 
@@ -261,19 +392,20 @@ impl SecondPassImplArgs {
         // Print more details in the error case here?
         ostry!(sess.run(status));
 
-        // Print out the `pedia.txt` metadata file
-
-        let mut files = sess.into_file_data();
-
-        let assets = stry!(files
-            .remove("pedia.txt")
-            .ok_or_else(|| anyhow!("no `pedia.txt` file output")));
-        let assets = BufReader::new(Cursor::new(&assets.data));
-
-        for line in assets.lines() {
-            let line = stry!(line.context("error reading line of `pedia.txt` output"));
-            println!("pedia:meta {}", line);
-        }
+        // We *could* print out the `pedia.txt` metadata file, but it's not
+        // currently needed.
+        //
+        //let mut files = sess.into_file_data();
+        //
+        //let assets = stry!(files
+        //    .remove("pedia.txt")
+        //    .ok_or_else(|| anyhow!("no `pedia.txt` file output")));
+        //let assets = BufReader::new(Cursor::new(&assets.data));
+        //
+        //for line in assets.lines() {
+        //    let line = stry!(line.context("error reading line of `pedia.txt` output"));
+        //    println!("pedia:meta {}", line);
+        //}
 
         Ok(())
     }

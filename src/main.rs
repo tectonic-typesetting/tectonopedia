@@ -112,23 +112,26 @@ impl BuildArgs {
         // Resolve cross-references and validate.
 
         index::maybe_indexing_operation(&mut indices, &metadata_ids[..], &mut cache, status)?;
+        tt_note!(
+            status,
+            "index validation: complete - {}",
+            indices.index_summary()
+        );
 
         // Generate the merged asset info
 
-        assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
+        let merged_assets_id =
+            assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
 
-        // atry!(
-        //     indices.validate_references();
-        //     ["failed to validate cross-references"]
-        // );
-        // tt_note!(
-        //     status,
-        //     "index validation: complete - {}",
-        //     indices.index_summary()
-        // );
-        //
-        // // TeX pass 2, emitting
-        //
+        // TeX pass 2, emitting
+
+        let mut p2r = pass2::Pass2Processor::new(metadata_ids, merged_assets_id, &indices)?;
+        tex_pass::process_inputs(&inputs, &mut p2r, &mut cache, &mut indices, status)?;
+        let n_outputs = p2r.n_outputs();
+        tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
+
+        // TODO: find a way to emit the HTML assets standalone!!!
+
         // let mut entrypoints_file = atry!(
         //     File::create("build/_all.html");
         //     ["error creating output `build/_all.html`"]
@@ -147,11 +150,8 @@ impl BuildArgs {
         //     ["error writing to output `build/_all.html`"]
         // );
         //
-        // let mut p2r = pass2::Pass2Processor::new(assets, indices, entrypoints_file);
-        // tex_pass::process_inputs(&mut p2r, status)?;
-        // let n_outputs = p2r.n_outputs();
-        // tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
-        //
+        // foreach output: writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", path)?;
+
         tt_note!(
             status,
             "build took {:.1} seconds",
