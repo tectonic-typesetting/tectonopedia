@@ -309,58 +309,6 @@ impl Cache {
         }
     }
 
-    /// Load a vector of instances from a file identified by a digest.
-    ///
-    /// This is used to load "extra inputs" associated with a given TeX file
-    /// after we have run a build and learned what external files it depends on.
-    fn load_instances(&mut self, dd: &DigestData) -> Result<Vec<PersistEntity>> {
-        let p = self.cache_path(dd, "insts", false).unwrap();
-
-        let f = match fs::File::open(&p) {
-            Ok(f) => f,
-            Err(ref e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(e).context(format!("failed to open `{}`", p.display())),
-        };
-
-        Ok(atry!(
-            bincode::deserialize_from(f);
-            ["failed to deserialize bincode data from `{}`", p.display()]
-        ))
-    }
-
-    /// Save a vector of instances into a file identified by a digest.
-    ///
-    /// This is used to save "extra inputs" associated with a given TeX file
-    /// after we have run a build and learned what external files it depends on.
-    /// The saving is done with a temporary file and an atomic rename.
-    fn save_instances(
-        &mut self,
-        dd: &DigestData,
-        insts: impl IntoIterator<Item = PersistEntity>,
-    ) -> Result<()> {
-        let v: Vec<PersistEntity> = insts.into_iter().collect();
-
-        let p = self.cache_path(dd, "insts", true)?;
-        let dir = p.parent().unwrap();
-
-        let mut f = atry!(
-            NamedTempFile::new_in(dir);
-            ["failed to create temporary file in `{}`", dir.display()]
-        );
-
-        atry!(
-            bincode::serialize_into(&mut f, &v);
-            ["failed to serialize bincode data into `{}`", f.path().display()]
-        );
-
-        atry!(
-            f.persist(&p);
-            ["failed to persist temporary file into `{}`", p.display()]
-        );
-
-        Ok(())
-    }
-
     /// Returns true if the specified operation needs to be rerun.
     ///
     /// The input cache data should have been set up information about the
@@ -624,34 +572,6 @@ impl SortedPersistEntitySet {
     ) -> Option<DigestData> {
         let pi = indices.persist_ident(re.ident);
         self.0.insert(pi, re.value_digest)
-    }
-
-    /// Insert a new entry into the set, based on its persistent identifier.
-    ///
-    /// If the entity was already in the set, the previously associated
-    /// digest is returned.
-    fn insert_persist(&mut self, pe: PersistEntity) -> Option<DigestData> {
-        self.0.insert(pe.ident, pe.value_digest)
-    }
-
-    /// Compute the digest of this set of inputs.
-    ///
-    /// This digest is computed as the digest of all of the input digests,
-    /// ordered by the persistent input identifiers. Thanks to this ordering,
-    /// the returned value should be reproducible regardless of the order in
-    /// which the inputs were added, so long as the inputs are the same.
-    ///
-    /// This does *not* include the input identies in the digest calculation. So
-    /// the digest of a set containing one source file will be the same as the
-    /// digest of a set containing a different file with identical contents.
-    fn compute_digest(&self) -> DigestData {
-        let mut dc = DigestComputer::new();
-
-        for digest in self.0.values() {
-            dc.update(digest);
-        }
-
-        dc.finalize()
     }
 
     /// Adapt this set into an iterator of entities.

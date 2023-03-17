@@ -84,13 +84,6 @@ impl PersistEntityIdent {
         dc.update(data);
     }
 
-    //fn compute_digest(&self) -> DigestData {
-    //    let mut dc = DigestComputer::new();
-    //    let data = bincode::serialize(self).unwrap(); // can this ever realistically fail?
-    //    dc.update(data);
-    //    dc.finalize()
-    //}
-
     /// Get a filesystem path associated with this identity, if one exists.
     ///
     /// The corresponding function on [`RuntimeEntityIdent`] is attached to the
@@ -150,16 +143,6 @@ pub struct PersistEntity {
 
     /// The digest of the entity's value.
     pub value_digest: DigestData,
-}
-
-impl PersistEntity {
-    /// Return the runtime equivalent of this entity.
-    pub fn as_runtime(&self, indices: &mut IndexCollection) -> RuntimeEntity {
-        RuntimeEntity {
-            ident: indices.runtime_ident(&self.ident),
-            value_digest: self.value_digest.clone(),
-        }
-    }
 }
 
 /// The unique identifier of a logical entity that can be an input or an output
@@ -229,16 +212,6 @@ pub struct RuntimeEntity {
 
     /// The digest of the entity's value.
     pub value_digest: DigestData,
-}
-
-impl RuntimeEntity {
-    /// Return the persistable equivalent of this entity.
-    pub fn as_persist(&self, indices: &IndexCollection) -> PersistEntity {
-        PersistEntity {
-            ident: indices.persist_ident(self.ident),
-            value_digest: self.value_digest.clone(),
-        }
-    }
 }
 
 /// A helper for creating build output files that are streamed to disk.

@@ -9,7 +9,7 @@ use std::{
     collections::HashSet,
     fmt::Write as FmtWrite,
     fs::File,
-    io::{BufRead, BufReader, Cursor, Write},
+    io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{ChildStdin, Command},
 };
@@ -23,18 +23,17 @@ use tectonic::{
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_warning, StatusBackend};
+use tectonic_status_base::StatusBackend;
 
 use crate::{
     cache::OpCacheData,
     gtry,
-    index::{IndexCollection, IndexId},
+    index::IndexCollection,
     metadata::Metadatum,
     ogtry,
     operation::{DigestComputer, DigestData, RuntimeEntityIdent},
-    ostry, stry,
+    ostry,
     tex_pass::{TexOperation, TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
-    InputId,
 };
 
 #[derive(Debug)]
