@@ -7,6 +7,7 @@ use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 
+mod assets;
 mod cache;
 mod config;
 mod holey_vec;
@@ -106,11 +107,15 @@ impl BuildArgs {
         let ninputs =
             tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
         tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
-        let (_asset_ids, metadata_ids) = p1r.unpack();
+        let (asset_ids, metadata_ids) = p1r.unpack();
 
         // Resolve cross-references and validate.
 
         index::maybe_indexing_operation(&mut indices, &metadata_ids[..], &mut cache, status)?;
+
+        // Generate the merged asset info
+
+        assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
 
         // atry!(
         //     indices.validate_references();
