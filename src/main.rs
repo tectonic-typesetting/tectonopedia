@@ -10,6 +10,7 @@ use tectonic_status_base::{tt_note, ChatterLevel, StatusBackend};
 mod assets;
 mod cache;
 mod config;
+mod entrypoint_file;
 mod holey_vec;
 mod index;
 mod inputs;
@@ -140,25 +141,10 @@ impl BuildArgs {
 
         // TODO: find a way to emit the HTML assets standalone!!!
 
-        // let mut entrypoints_file = atry!(
-        //     File::create("build/_all.html");
-        //     ["error creating output `build/_all.html`"]
-        // );
-        //
-        // // By adding the reference to shared files here at the top of this
-        // // entrypoint, we get Parcel.js to emit the associated built files under
-        // // this file's name. Otherwise they get tied to whatever happens to be
-        // // the first entry that we emit.
-        // atry!(
-        //     writeln!(
-        //         entrypoints_file,
-        //         "<link rel=\"stylesheet\" href=\"./tdux-fonts.css\">\n\
-        //         <script src=\"../web/index.ts\" type=\"module\"></script>"
-        //     );
-        //     ["error writing to output `build/_all.html`"]
-        // );
-        //
-        // foreach output: writeln!(self.entrypoints_file, "<a href=\"{}\"></a>", path)?;
+        // Generate the entrypoint file
+
+        entrypoint_file::maybe_make_entrypoint_operation(&mut cache, &mut indices, status)?;
+        tt_note!(status, "entrypoint file refreshed");
 
         tt_note!(
             status,
