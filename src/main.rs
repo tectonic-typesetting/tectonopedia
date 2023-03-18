@@ -111,7 +111,7 @@ impl BuildArgs {
 
         // Resolve cross-references and validate.
 
-        index::maybe_indexing_operation(&mut indices, &metadata_ids[..], &mut cache, status)?;
+        index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
         tt_note!(
             status,
             "index validation: complete - {}",

@@ -693,7 +693,16 @@ pub enum IndexRefFlag {
 
 // The index construction phase of the build
 
-pub fn maybe_indexing_operation(
+/// Set up the indices for pass 2 and validate them.
+///
+/// We generate a collection of CSV files capturing the state of the indices.
+/// However, these files are never actually read during the primary build
+/// process! Even if they're fully up-to-date, we need to reread the Pass 1
+/// metadata files to properly build up our internal data structure of
+/// cross-references by input. But, creating these files gives us a way to
+/// properly trigger Pass 2 rebuilds for the subset of inputs that need them,
+/// and they could potentially be useful for manual inspection.
+pub fn construct_indices(
     indices: &mut IndexCollection,
     metadata_ids: &[RuntimeEntityIdent],
     cache: &mut Cache,
@@ -713,16 +722,31 @@ pub fn maybe_indexing_operation(
 
     let opid = dc.finalize();
 
-    let needs_rerun = atry!(
+    let needs_reemit = atry!(
         cache.operation_needs_rerun(&opid, indices, status);
         ["failed to probe cache for internal indexing operation"]
     );
 
-    if !needs_rerun {
-        return Ok(());
-    }
+    // Create the entity IDs for our output files, which must be done in two
+    // steps since registering the idents requires a mutable ref on the indices.
+    // We only use this information if we re-emit the index files, but if we
+    // don't do this unconditionally, the index of outputs changes depending on
+    // whether that re-emission happens or not, which is Bad.
 
-    // It seems that we need to rerun the indexing.
+    let mut index_file_names: Vec<String> = indices.indices[INDEX_OF_INDICES_INDEX]
+        .iter()
+        .into_iter()
+        .map(|t| format!("cache/idx/{}.csv", t.1))
+        .collect();
+
+    let index_files: Vec<_> = index_file_names
+        .drain(..)
+        .map(|p| RuntimeEntityIdent::new_other_file(p, indices))
+        .collect();
+
+    // Regardless of whether we need to re-emit the files, we need to
+    // reconstruct the information that maps input files to their index
+    // references for pass 2.
 
     let mut ocd = OpCacheData::new(opid);
 
@@ -744,54 +768,40 @@ pub fn maybe_indexing_operation(
         ["failed to validate cross-references"]
     );
 
-    // Yay, indices are good. Write them to disk. First we need to create the
-    // entity IDs for our output files, since doing so requires a mutable ref to
-    // the indices.
+    // Yay, indices are good. If we believe they've changed, write new files to
+    // disk.
 
-    let mut index_file_names: Vec<String> = indices.indices[INDEX_OF_INDICES_INDEX]
-        .iter()
-        .into_iter()
-        .map(|t| format!("cache/idx/{}.csv", t.1))
-        .collect();
+    if needs_reemit {
+        let ioi_index = &indices.indices[INDEX_OF_INDICES_INDEX];
+        let outputs_index = &indices.indices[OUTPUTS_INDEX_INDEX];
+        let fragments_index = &indices.indices[FRAGMENTS_INDEX_INDEX];
 
-    let index_files: Vec<_> = index_file_names
-        .drain(..)
-        .map(|p| RuntimeEntityIdent::new_other_file(p, indices))
-        .collect();
+        for (index_id, index_name) in ioi_index.iter() {
+            let index_id: EntryId = index_id; // need this to de-confuse rust-analyzer
 
-    // Now we can write everything out.
+            // Skip internal indices that won't be used directly by TeX files.
+            match index_name {
+                "ioi" | "otherpaths" | "fragments" => continue,
+                _ => {}
+            }
 
-    let ioi_index = &indices.indices[INDEX_OF_INDICES_INDEX];
-    let outputs_index = &indices.indices[OUTPUTS_INDEX_INDEX];
-    let fragments_index = &indices.indices[FRAGMENTS_INDEX_INDEX];
+            // OK, we should write this one out.
 
-    for (index_id, index_name) in ioi_index.iter() {
-        let index_id: EntryId = index_id; // need this to de-confuse rust-analyzer
-
-        // Skip internal indices that won't be used directly by TeX
-        // files and should be rebuilt properly on the fly.
-
-        match index_name {
-            "ioi" | "otherpaths" | "fragments" => continue,
-            _ => {}
+            let index_id = index_id.to_usize();
+            let index = &indices.indices[index_id];
+            let stream = OpOutputStream::new(index_files[index_id], indices)?;
+            let mut stream = index.write(stream, outputs_index, fragments_index)?;
+            let (entity, size) = stream.close()?;
+            ocd.add_output_with_value(index_files[index_id], entity.value_digest, size);
         }
 
-        // OK, we should write this one out.
+        // Cache it and we're done!
 
-        let index_id = index_id.to_usize();
-        let index = &indices.indices[index_id];
-        let stream = OpOutputStream::new(index_files[index_id], indices)?;
-        let mut stream = index.write(stream, outputs_index, fragments_index)?;
-        let (entity, size) = stream.close()?;
-        ocd.add_output_with_value(index_files[index_id], entity.value_digest, size);
+        atry!(
+            cache.finalize_operation(ocd, indices);
+            ["failed to store caching information for indexing operation"]
+        );
     }
-
-    // Cache it and we're done!
-
-    atry!(
-        cache.finalize_operation(ocd, indices);
-        ["failed to store caching information for indexing operation"]
-    );
 
     Ok(())
 }
