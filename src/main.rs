@@ -104,9 +104,13 @@ impl BuildArgs {
         // First TeX pass of indexing and gathering font/asset information.
 
         let mut p1r = pass1::Pass1Processor::default();
-        let ninputs =
+        let n_processed =
             tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
-        tt_note!(status, "TeX pass 1: complete - processed {ninputs} inputs");
+        tt_note!(
+            status,
+            "TeX pass 1 outputs refreshed - processed {n_processed} of {} inputs",
+            inputs.len()
+        );
         let (asset_ids, metadata_ids) = p1r.unpack();
 
         // Resolve cross-references and validate.
@@ -114,7 +118,7 @@ impl BuildArgs {
         index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
         tt_note!(
             status,
-            "index validation: complete - {}",
+            "internal indices refreshed - {}",
             indices.index_summary()
         );
 
@@ -122,13 +126,17 @@ impl BuildArgs {
 
         let merged_assets_id =
             assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
+        tt_note!(status, "merged asset description refreshed");
 
         // TeX pass 2, emitting
 
         let mut p2r = pass2::Pass2Processor::new(metadata_ids, merged_assets_id, &indices)?;
         tex_pass::process_inputs(&inputs, &mut p2r, &mut cache, &mut indices, status)?;
-        let n_outputs = p2r.n_outputs();
-        tt_note!(status, "TeX pass 2: complete - created {n_outputs} outputs");
+        let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
+        tt_note!(
+            status,
+            "TeX pass 2 outpus refreshed - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
+        );
 
         // TODO: find a way to emit the HTML assets standalone!!!
 

@@ -288,7 +288,11 @@ pub trait TexProcessor {
     /// value. The value may or may not have been passed through a
     /// [`Self::Worker`], depending on whether the cache indicated that the
     /// operation actually needed to be rerun or not.
-    fn accumulate_output(&mut self, opinfo: <Self::Worker as WorkerDriver>::OpInfo);
+    fn accumulate_output(
+        &mut self,
+        opinfo: <Self::Worker as WorkerDriver>::OpInfo,
+        was_rerun: bool,
+    );
 }
 
 pub trait TexOperation: Send {
@@ -346,8 +350,7 @@ pub fn process_inputs<'a, P: TexProcessor>(
         if !needs_rerun {
             // If we're not going to fire off a thread to process this task,
             // we just accumulate it into the results directly and we're done.
-            tt_warning!(status, "skipping input `{:?}`!!!", input);
-            proc.accumulate_output(opinfo);
+            proc.accumulate_output(opinfo, false);
             continue;
         }
 
@@ -458,7 +461,7 @@ fn process_input_finish<P: TexProcessor>(
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
 ) {
-    proc.accumulate_output(item);
+    proc.accumulate_output(item, true);
 
     // Since any failure only involves the caching step, not the actaul build
     // operation, we'll report it but not flag the error at a higher level.

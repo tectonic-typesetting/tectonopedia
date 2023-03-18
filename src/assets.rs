@@ -43,13 +43,11 @@ pub fn maybe_asset_merge_operation(
     );
 
     if !needs_rerun {
-        eprintln!("assets short-circuit");
         return Ok(output);
     }
 
     // It seems that we need to rerun the asset merge.
 
-    eprintln!("assets running it");
     let mut ocd = OpCacheData::new(opid);
     let mut merged = AssetSpecification::default();
 

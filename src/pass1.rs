@@ -109,7 +109,7 @@ impl TexProcessor for Pass1Processor {
         Pass1Driver::new(opinfo, indices)
     }
 
-    fn accumulate_output(&mut self, opinfo: Pass1OpInfo) {
+    fn accumulate_output(&mut self, opinfo: Pass1OpInfo, _was_rerun: bool) {
         let input_index = match opinfo.input_id {
             RuntimeEntityIdent::TexSourceFile(s) => s.to_usize(),
             _ => unreachable!(),

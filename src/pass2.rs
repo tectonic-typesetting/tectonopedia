@@ -41,7 +41,8 @@ pub struct Pass2Processor {
     merged_assets_id: RuntimeEntityIdent,
     assets: AssetSpecification,
     metadata_ids: Vec<RuntimeEntityIdent>,
-    n_outputs: usize,
+    n_outputs_total: usize,
+    n_outputs_rerun: usize,
 }
 
 impl Pass2Processor {
@@ -71,12 +72,13 @@ impl Pass2Processor {
             merged_assets_id,
             assets,
             metadata_ids,
-            n_outputs: 0,
+            n_outputs_total: 0,
+            n_outputs_rerun: 0,
         })
     }
 
-    pub fn n_outputs(&self) -> usize {
-        self.n_outputs
+    pub fn n_outputs(&self) -> (usize, usize) {
+        (self.n_outputs_rerun, self.n_outputs_total)
     }
 }
 
@@ -121,7 +123,13 @@ impl TexProcessor for Pass2Processor {
         ))
     }
 
-    fn accumulate_output(&mut self, _item: Pass2OpInfo) {}
+    fn accumulate_output(&mut self, item: Pass2OpInfo, was_rerun: bool) {
+        self.n_outputs_total += item.html_output_ids.len();
+
+        if was_rerun {
+            self.n_outputs_rerun += item.html_output_ids.len();
+        }
+    }
 }
 
 #[derive(Debug)]
