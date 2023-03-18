@@ -136,7 +136,7 @@ impl BuildArgs {
         let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
         tt_note!(
             status,
-            "TeX pass 2 outpus refreshed - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
+            "TeX pass 2 outputs refreshed - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
         );
 
         // TODO: find a way to emit the HTML assets standalone!!!
