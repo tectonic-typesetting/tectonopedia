@@ -40,7 +40,7 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
         tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
     tt_note!(
         status,
-        "refreshed TeX pass 1 outputs refreshed - processed {n_processed} of {} inputs",
+        "refreshed TeX pass 1 outputs       - processed {n_processed} of {} inputs",
         inputs.len()
     );
     let (asset_ids, metadata_ids) = p1r.unpack();
@@ -50,7 +50,7 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
     tt_note!(
         status,
-        "internal indices refreshed - {}",
+        "refreshed internal indices         - {}",
         indices.index_summary()
     );
 
@@ -58,7 +58,7 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
 
     let merged_assets_id =
         assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
-    tt_note!(status, "merged asset description refreshed");
+    tt_note!(status, "refreshed merged asset description");
 
     // TeX pass 2, emitting
 
@@ -67,7 +67,7 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
     tt_note!(
             status,
-            "TeX pass 2 outputs refreshed - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
+            "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
         );
 
     // TODO: find a way to emit the HTML assets standalone!!!
@@ -75,7 +75,7 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     // Generate the entrypoint file
 
     entrypoint_file::maybe_make_entrypoint_operation(&mut cache, &mut indices, status)?;
-    tt_note!(status, "entrypoint file refreshed");
+    tt_note!(status, "refreshed entrypoint file");
     Ok(())
 }
 
@@ -141,11 +141,13 @@ impl BuildArgs {
             ["failed to rename `staging` to `build`"]
         );
 
+        // TODO: yarn index, yarn build
+
         // All done.
 
         tt_note!(
             status,
-            "build took {:.1} seconds",
+            "full build took {:.1} seconds",
             t0.elapsed().as_secs_f32()
         );
         Ok(())
