@@ -147,6 +147,11 @@ impl BuildArgs {
             ["failed to generate fulltext index"]
         );
 
+        atry!(
+            yarn::yarn_build(status);
+            ["failed to generate production files"]
+        );
+
         // All done.
 
         tt_note!(
