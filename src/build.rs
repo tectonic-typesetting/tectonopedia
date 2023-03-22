@@ -8,7 +8,7 @@ use std::{fs, io::ErrorKind, time::Instant};
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_error, tt_note, StatusBackend};
 
-use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pass};
+use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pass, yarn};
 
 fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     // Set up data structures
@@ -135,14 +135,17 @@ impl BuildArgs {
             t0.elapsed().as_secs_f32()
         );
 
-        // De-stage for `yarn` ops
+        // De-stage for `yarn` ops and then ... do them.
 
         atry!(
             fs::rename("staging", "build");
             ["failed to rename `staging` to `build`"]
         );
 
-        // TODO: yarn index, yarn build
+        atry!(
+            yarn::yarn_index(status);
+            ["failed to generate fulltext index"]
+        );
 
         // All done.
 

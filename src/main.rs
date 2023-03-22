@@ -23,6 +23,7 @@ mod tex_escape;
 #[macro_use]
 mod tex_pass;
 mod worker_status;
+mod yarn;
 
 use worker_status::WorkerStatusBackend;
 
