@@ -273,12 +273,8 @@ impl Pass2Driver {
 impl WorkerDriver for Pass2Driver {
     type OpInfo = Pass2OpInfo;
 
-    fn init_command(&self, cmd: &mut Command, task_num: usize) {
+    fn init_command(&self, cmd: &mut Command) {
         cmd.arg("second-pass-impl").arg(&self.input_path);
-
-        if task_num == 0 {
-            cmd.arg("--first");
-        }
     }
 
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()> {
@@ -300,10 +296,6 @@ pub struct SecondPassImplArgs {
     /// The path of the TeX file to compile
     #[arg()]
     pub tex_path: String,
-
-    /// If this is the first TeX build in the session.
-    #[arg(long)]
-    pub first: bool,
 }
 
 impl SecondPassImplArgs {
@@ -385,14 +377,8 @@ impl SecondPassImplArgs {
             .unstables(unstables)
             .format_cache_path(ogtry!(config.format_cache_path()))
             .output_dir(&out_dir)
+            .html_emit_assets(false)
             .pass(PassSetting::Default);
-
-        if !self.first {
-            // For the first output, we leave the default configuration to emit
-            // the assets. For all other outputs, we want Tectonic to emit
-            // the templated HTML outputs, but not the assets (font files, etc.).
-            sess.html_emit_assets(false);
-        }
 
         let mut sess = ogtry!(sess.create(status));
 

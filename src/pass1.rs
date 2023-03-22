@@ -191,7 +191,7 @@ impl Pass1Driver {
 impl WorkerDriver for Pass1Driver {
     type OpInfo = Pass1OpInfo;
 
-    fn init_command(&self, cmd: &mut Command, _task_num: usize) {
+    fn init_command(&self, cmd: &mut Command) {
         cmd.arg("first-pass-impl").arg(&self.input_path);
     }
 

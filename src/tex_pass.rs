@@ -143,9 +143,7 @@ pub trait WorkerDriver: Send {
 
     /// Initialize arguments/settings for the subcommand that will be run, which
     /// is a re-execution of the calling process.
-    ///
-    /// *task_num* is index number of this particular processing task.
-    fn init_command(&self, cmd: &mut Command, task_num: usize);
+    fn init_command(&self, cmd: &mut Command);
 
     /// Send information to the subcommand over its standard input.
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()>;
@@ -164,7 +162,6 @@ pub trait WorkerDriver: Send {
 fn process_one_input<W: WorkerDriver>(
     mut driver: W,
     self_path: PathBuf,
-    n_tasks: usize,
     mut status: Box<dyn StatusBackend>,
 ) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
     // This function should fully report out any errors that it encounters,
@@ -172,7 +169,7 @@ fn process_one_input<W: WorkerDriver>(
     // or "general" error occurred; it can't propagate out detailed information.
 
     let mut cmd = Command::new(&self_path);
-    driver.init_command(&mut cmd, n_tasks);
+    driver.init_command(&mut cmd);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     let mut child = match cmd.spawn() {
@@ -386,7 +383,7 @@ pub fn process_inputs<'a, P: TexProcessor>(
         let sp = self_path.clone();
 
         pool.execute(move || {
-            tx.send(process_one_input(driver, sp, n_tasks, item_status))
+            tx.send(process_one_input(driver, sp, item_status))
                 .expect("channel waits for pool result");
         });
         n_tasks += 1;

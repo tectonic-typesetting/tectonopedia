@@ -54,11 +54,14 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
         indices.index_summary()
     );
 
-    // Generate the merged asset info
+    // Generate the merged asset info and emit the files
 
     let merged_assets_id =
         assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
     tt_note!(status, "refreshed merged asset description");
+
+    assets::maybe_emit_assets_operation(merged_assets_id, &mut cache, &mut indices, status)?;
+    tt_note!(status, "refreshed HTML support assets");
 
     // TeX pass 2, emitting
 
@@ -69,8 +72,6 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
             status,
             "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
         );
-
-    // TODO: find a way to emit the HTML assets standalone!!!
 
     // Generate the entrypoint file
 
@@ -97,9 +98,9 @@ impl BuildArgs {
             // Success - we will do a nice incremental build
             //
             // On Unix this operation will succeed if `staging` exists but is
-            // empty. There is an unstable ErrorKind::DirectoryNotEmpty that
-            // could indicate when it is *not* empty, which would suggest a
-            // clash of builds.
+            // empty; the empty directory will be replaced. There is an unstable
+            // ErrorKind::DirectoryNotEmpty that could indicate when it is *not*
+            // empty, which would suggest a clash of builds.
             Ok(_) => {}
 
             // No existing build; we'll start from scratch.
