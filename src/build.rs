@@ -2,15 +2,37 @@
 // Licensed under the MIT License
 
 //! The main TeX-to-HTML build operation.
+//!
+//! The most interesting piece here is the `watch` operation. It's a bit tricky
+//! since we need to cooperate with Parcel.js's `serve` operation. In
+//! particular, we want just one `yarn serve` hanging out doing its thing, but
+//! we don't want it rebuilding with a bunch of partial inputs as we do the TeX
+//! processing.
+//!
+//! Based on my Linux testing, it looks like we can move the `build` directory
+//! out from under `yarn serve` and then back, and Parcel.js won't trigger a
+//! rebuild even if any files in that tree have changed. But if we then make any
+//! updates in that tree, Parcel will detect a change and rebuild everything. So
+//! our strategy is to move `build` to a temporary name (`staging`) for the TeX
+//! phase, move it back to `build` when that's all done, and then do the `yarn
+//! index` step to trigger the Parcel rebuild (as well as because we need to do
+//! it and it can only run when all of the TeX stuff is done).
 
 use clap::Args;
-use std::{fs, io::ErrorKind, time::Instant};
+use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
+use std::{
+    fs,
+    io::ErrorKind,
+    path::Path,
+    time::{Duration, Instant},
+};
+use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_error, tt_note, StatusBackend};
+use tectonic_status_base::{tt_error, tt_note, ChatterLevel, StatusBackend};
 
 use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pass, yarn};
 
-fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
+fn primary_build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     // Set up data structures
 
     let mut indices = index::IndexCollection::new()?;
@@ -80,20 +102,13 @@ fn build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     Ok(())
 }
 
-/// The standalone build operation.
-#[derive(Args, Debug)]
-pub struct BuildArgs {
-    #[arg(long)]
-    sample: Option<String>,
-}
+fn build_through_index(do_rename: bool, status: &mut dyn StatusBackend) -> Result<Instant> {
+    let t0 = Instant::now();
 
-impl BuildArgs {
-    pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
-        let t0 = Instant::now();
+    // "Claim" the existing build tree to enable an incremental build,
+    // or create a new one from scratch if needed.
 
-        // "Claim" the existing build tree to enable an incremental build,
-        // or create a new one from scratch if needed.
-
+    if do_rename {
         match fs::rename("build", "staging") {
             // Success - we will do a nice incremental build
             //
@@ -124,39 +139,157 @@ impl BuildArgs {
             // Some other problem - bail.
             Err(e) => return Err(e).context(format!("failed to rename `build` to `staging`")),
         }
+    }
 
-        // Main build.
+    // Main build.
 
-        build_implementation(status)?;
+    primary_build_implementation(status)?;
 
-        tt_note!(
-            status,
-            "primary build took {:.1} seconds",
-            t0.elapsed().as_secs_f32()
-        );
+    tt_note!(
+        status,
+        "primary build took {:.1} seconds",
+        t0.elapsed().as_secs_f32()
+    );
 
-        // De-stage for `yarn` ops and then ... do them.
+    // De-stage for `yarn` ops and make the fulltext index.
 
-        atry!(
-            fs::rename("staging", "build");
-            ["failed to rename `staging` to `build`"]
-        );
+    atry!(
+        fs::rename("staging", "build");
+        ["failed to rename `staging` to `build`"]
+    );
 
-        atry!(
-            yarn::yarn_index(status);
-            ["failed to generate fulltext index"]
-        );
+    atry!(
+        yarn::yarn_index(status);
+        ["failed to generate fulltext index"]
+    );
+
+    Ok(t0)
+}
+
+/// The standalone build operation.
+#[derive(Args, Debug)]
+pub struct BuildArgs {
+    #[arg(long)]
+    sample: Option<String>,
+}
+
+impl BuildArgs {
+    /// In the "build" op, we do the main build, then just cap it off with a
+    /// `yarn build` and we're done.
+    pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+        let t0 = build_through_index(true, status)?;
 
         atry!(
             yarn::yarn_build(status);
             ["failed to generate production files"]
         );
 
-        // All done.
-
         tt_note!(
             status,
             "full build took {:.1} seconds",
+            t0.elapsed().as_secs_f32()
+        );
+        Ok(())
+    }
+}
+
+/// The watch operation.
+#[derive(Args, Debug)]
+pub struct WatchArgs {}
+
+impl WatchArgs {
+    /// This function is special since it takes ownership of the status backend,
+    /// since we need to send it to another thread for steady-state operations.
+    pub fn exec(self, status: Box<dyn StatusBackend + Send>) {
+        // Set up our object that will watch for changes, and run an initial
+        // build.
+
+        let mut watcher = Watcher {
+            status,
+            last_succeeded: true,
+        };
+
+        watcher.build();
+
+        // OK well now let's create another status backend that we'll use in
+        // case anything goes wrong from here on out. I think it's better to
+        // send the "original" status to the watcher since it will be set up
+        // with whatever configuration and customization happens by default.
+
+        let mut status = TermcolorStatusBackend::new(ChatterLevel::Normal);
+
+        if let Err(e) = self.finish_exec(watcher) {
+            status.report_error(&e);
+            std::process::exit(1)
+        }
+    }
+
+    fn finish_exec(self, watcher: Watcher) -> Result<()> {
+        eprintln!("XXX launch yarn start!");
+
+        // Now set up the debounced notifier that will handle things from here
+        // on out.
+
+        let mut debouncer = atry!(
+            new_debouncer(Duration::from_millis(300), None, watcher);
+            ["failed to set up filesystem change notifier"]
+        );
+
+        for dname in &["cls", "idx", "src", "txt", "web"] {
+            atry!(
+                debouncer
+                    .watcher()
+                    .watch(Path::new(dname), notify::RecursiveMode::Recursive);
+                ["failed to watch directory `{}`", dname]
+            );
+        }
+
+        // XXX FAKE
+        std::thread::sleep(Duration::from_secs(99999));
+        Ok(())
+    }
+}
+
+struct Watcher {
+    status: Box<dyn StatusBackend + Send>,
+    last_succeeded: bool,
+}
+
+impl DebounceEventHandler for Watcher {
+    fn handle_event(&mut self, event: DebounceEventResult) {
+        if let Err(mut e) = event {
+            tt_error!(
+                self.status.as_mut(),
+                "file change notification system returned error(s)"
+            );
+
+            for e in e.drain(..) {
+                tt_error!(self.status.as_mut(), "failed to detect changes"; e.into());
+            }
+        } else {
+            self.build();
+        }
+    }
+}
+
+impl Watcher {
+    fn build(&mut self) {
+        if let Err(e) = self.build_inner() {
+            self.status.report_error(&e);
+            self.last_succeeded = false;
+        } else {
+            self.last_succeeded = true;
+        }
+    }
+
+    fn build_inner(&mut self) -> Result<()> {
+        let status = self.status.as_mut();
+
+        let t0 = build_through_index(self.last_succeeded, status)?;
+
+        tt_note!(
+            status,
+            "primary build plus index took {:.1} seconds",
             t0.elapsed().as_secs_f32()
         );
         Ok(())
