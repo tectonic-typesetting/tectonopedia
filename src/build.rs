@@ -279,7 +279,7 @@ impl WatchArgs {
     }
 
     fn finish_exec(self, watcher: Watcher) -> Result<()> {
-        eprintln!("XXX launch `yarn serve`!");
+        let mut yarn_child = yarn::yarn_serve()?;
 
         // Now set up the debounced notifier that will handle things from here
         // on out.
@@ -298,8 +298,7 @@ impl WatchArgs {
             );
         }
 
-        // XXX FAKE
-        std::thread::sleep(Duration::from_secs(99999));
+        let _ignore = yarn_child.wait();
         Ok(())
     }
 }
