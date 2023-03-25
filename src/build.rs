@@ -22,7 +22,7 @@ use clap::Args;
 use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
 use std::{
     fs,
-    io::ErrorKind,
+    io::{ErrorKind, Write},
     path::Path,
     time::{Duration, Instant},
 };
@@ -38,6 +38,7 @@ use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pas
 /// This list is used in "watch" mode to efficiently update Parcel.js.
 fn primary_build_implementation(
     collect_paths: bool,
+    terse_output: bool,
     status: &mut dyn StatusBackend,
 ) -> Result<Vec<String>> {
     // Set up data structures
@@ -67,21 +68,34 @@ fn primary_build_implementation(
     let mut p1r = pass1::Pass1Processor::default();
     let n_processed =
         tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
-    tt_note!(
-        status,
-        "refreshed TeX pass 1 outputs       - processed {n_processed} of {} inputs",
-        inputs.len()
-    );
+
+    if terse_output {
+        print!("pass1");
+        let _ignored = std::io::stdout().flush();
+    } else {
+        tt_note!(
+            status,
+            "refreshed TeX pass 1 outputs       - processed {n_processed} of {} inputs",
+            inputs.len()
+        );
+    }
+
     let (asset_ids, metadata_ids) = p1r.unpack();
 
     // Resolve cross-references and validate.
 
     index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
-    tt_note!(
-        status,
-        "refreshed internal indices         - {}",
-        indices.index_summary()
-    );
+
+    if terse_output {
+        print!(" int-index");
+        let _ignored = std::io::stdout().flush();
+    } else {
+        tt_note!(
+            status,
+            "refreshed internal indices         - {}",
+            indices.index_summary()
+        );
+    }
 
     // Generate the merged asset info and emit the files. Start collecting
     // information about our outputs that will feed into the Parcel.js build
@@ -90,21 +104,36 @@ fn primary_build_implementation(
 
     let merged_assets_id =
         assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
-    tt_note!(status, "refreshed merged asset description");
+
+    if !terse_output {
+        tt_note!(status, "refreshed merged asset description");
+    }
 
     let mut maybe_modified_output_files =
         assets::maybe_emit_assets_operation(merged_assets_id, &mut cache, &mut indices, status)?;
-    tt_note!(status, "refreshed HTML support assets");
+
+    if terse_output {
+        print!(" assets");
+        let _ignored = std::io::stdout().flush();
+    } else {
+        tt_note!(status, "refreshed HTML support assets");
+    }
 
     // TeX pass 2, emitting
 
     let mut p2r = pass2::Pass2Processor::new(metadata_ids, merged_assets_id, &indices)?;
     tex_pass::process_inputs(&inputs, &mut p2r, &mut cache, &mut indices, status)?;
     let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
-    tt_note!(
-        status,
-        "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
-    );
+
+    if terse_output {
+        print!(" pass2");
+        let _ignored = std::io::stdout().flush();
+    } else {
+        tt_note!(
+            status,
+            "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
+        );
+    }
 
     maybe_modified_output_files.append(&mut p2r.into_potential_modified_outputs());
 
@@ -116,7 +145,13 @@ fn primary_build_implementation(
     let mut modified_output_files = Vec::new();
 
     let id = entrypoint_file::maybe_make_entrypoint_operation(&mut cache, &mut indices, status)?;
-    tt_note!(status, "refreshed entrypoint file");
+
+    if terse_output {
+        print!(" entrypoint");
+        let _ignored = std::io::stdout().flush();
+    } else {
+        tt_note!(status, "refreshed entrypoint file");
+    }
 
     if let Some(id) = id {
         modified_output_files.push(id);
@@ -155,6 +190,7 @@ fn primary_build_implementation(
 fn build_through_index(
     do_rename: bool,
     collect_paths: bool,
+    terse_output: bool,
     status: &mut dyn StatusBackend,
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
@@ -197,13 +233,15 @@ fn build_through_index(
 
     // Main build.
 
-    let modified_files = primary_build_implementation(collect_paths, status)?;
+    let modified_files = primary_build_implementation(collect_paths, terse_output, status)?;
 
-    tt_note!(
-        status,
-        "primary build took {:.1} seconds",
-        t0.elapsed().as_secs_f32()
-    );
+    if !terse_output {
+        tt_note!(
+            status,
+            "primary build took {:.1} seconds",
+            t0.elapsed().as_secs_f32()
+        );
+    }
 
     // De-stage for `yarn` ops and make the fulltext index.
 
@@ -213,9 +251,14 @@ fn build_through_index(
     );
 
     atry!(
-        yarn::yarn_index(status);
+        yarn::yarn_index(terse_output, status);
         ["failed to generate fulltext index"]
     );
+
+    if terse_output {
+        print!(" ft-index");
+        let _ignored = std::io::stdout().flush();
+    }
 
     Ok((t0, modified_files))
 }
@@ -231,7 +274,7 @@ impl BuildArgs {
     /// In the "build" op, we do the main build, then just cap it off with a
     /// `yarn build` and we're done.
     pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
-        let (t0, _) = build_through_index(true, false, status)?;
+        let (t0, _) = build_through_index(true, false, false, status)?;
 
         atry!(
             yarn::yarn_build(status);
@@ -338,13 +381,9 @@ impl Watcher {
     fn build_inner(&mut self) -> Result<()> {
         let status = self.status.as_mut();
 
-        let (t0, changed) = build_through_index(self.last_succeeded, true, status)?;
-
-        tt_note!(
-            status,
-            "primary build plus index took {:.1} seconds",
-            t0.elapsed().as_secs_f32()
-        );
+        println!();
+        let (t0, changed) = build_through_index(self.last_succeeded, true, true, status)?;
+        println!("... {:.1} seconds elapsed\n\n", t0.elapsed().as_secs_f32());
 
         // Touch the modified files; Parcel's change-detection code doesn't
         // catch atomic replacements.
