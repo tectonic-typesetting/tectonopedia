@@ -15,11 +15,15 @@ use crate::{
     operation::{DigestComputer, OpOutputStream, RuntimeEntityIdent},
 };
 
+/// Potentially emit the "entrypoint" file used to drive Parcel.js
+///
+/// The return value is an optional identifier of the entrypoint file, *if* it
+/// was modified during the build process.
 pub fn maybe_make_entrypoint_operation(
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
-) -> Result<RuntimeEntityIdent> {
+) -> Result<Option<RuntimeEntityIdent>> {
     // Set up the information about the operation. By construction, the
     // "outputs" index CSV file contains exactly what we need.
 
@@ -40,13 +44,15 @@ pub fn maybe_make_entrypoint_operation(
     );
 
     if !needs_rerun {
-        return Ok(output);
+        return Ok(None);
     }
 
     // It seems that we need to remake the entrypoint. Set up the files ...
 
     let mut ocd = OpCacheData::new(opid);
     ocd.add_input(input);
+
+    let orig_digest = cache.unconditional_entity(output, indices)?.value_digest;
 
     let csv_path = indices.path_for_runtime_ident(input).unwrap();
 
@@ -103,5 +109,12 @@ pub fn maybe_make_entrypoint_operation(
         ["failed to store caching information for entrypoint creation operation"]
     );
 
-    Ok(output)
+    // Note that we're only returning Some if the file changed: if the digests
+    // are *different*.
+
+    Ok(if entity.value_digest == orig_digest {
+        None
+    } else {
+        Some(output)
+    })
 }

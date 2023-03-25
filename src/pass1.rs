@@ -22,7 +22,7 @@ use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
 
 use crate::{
-    cache::OpCacheData,
+    cache::{Cache, OpCacheData},
     gtry,
     holey_vec::HoleyVec,
     index::IndexCollection,
@@ -69,6 +69,7 @@ impl TexProcessor for Pass1Processor {
     fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,
+        _cache: &mut Cache,
         indices: &mut IndexCollection,
     ) -> Result<Pass1OpInfo> {
         // Generate the ID of this operation

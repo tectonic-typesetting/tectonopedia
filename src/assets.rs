@@ -20,7 +20,7 @@ use tectonic_status_base::{ChatterLevel, StatusBackend};
 use crate::{
     cache::{Cache, OpCacheData},
     index::IndexCollection,
-    operation::{DigestComputer, OpOutputStream, RuntimeEntityIdent},
+    operation::{DigestComputer, OpOutputStream, RuntimeEntity, RuntimeEntityIdent},
 };
 
 pub fn maybe_asset_merge_operation(
@@ -106,12 +106,19 @@ pub fn maybe_asset_merge_operation(
     Ok(output)
 }
 
+/// Potentially emit the actual supporting assets for the HTML outputs.
+///
+/// The return value is a vector of runtime file entities that *might* have been
+/// modified during the build process. The associated digest values are the
+/// digests of the outputs from *before* the operation was run. The caller can
+/// compare those digests to what they are *after* the build to search for
+/// changes.
 pub fn maybe_emit_assets_operation(
     asset_file: RuntimeEntityIdent,
     cache: &mut Cache,
     indices: &mut IndexCollection,
     status: &mut dyn StatusBackend,
-) -> Result<()> {
+) -> Result<Vec<RuntimeEntity>> {
     // Set up the information about the operation.
 
     let mut dc = DigestComputer::default();
@@ -126,7 +133,8 @@ pub fn maybe_emit_assets_operation(
     );
 
     if !needs_rerun {
-        return Ok(());
+        // If we're not rerunning the operation, nothing should have changed!
+        return Ok(Vec::new());
     }
 
     // It seems that we need to re-emit the assets.
@@ -148,11 +156,13 @@ pub fn maybe_emit_assets_operation(
         ["failed to import assets data"]
     );
 
+    let mut outputs = Vec::new();
+
     for path in assets.output_paths() {
-        // These outputs aren't used any farther in the build process (for
-        // now?), so we register them (so that we will know to re-emit if
-        // neeeded) but don't actually hold onto their identifiers.
-        ocd.add_output(RuntimeEntityIdent::new_output_file(path, indices));
+        // Register the outputs and compute their *pre-build* digests.
+        let ident = RuntimeEntityIdent::new_output_file(path, indices);
+        ocd.add_output(ident);
+        outputs.push(cache.unconditional_entity(ident, indices)?);
     }
 
     atry!(
@@ -167,7 +177,7 @@ pub fn maybe_emit_assets_operation(
         ["failed to store caching information for asset emission operation"]
     );
 
-    Ok(())
+    Ok(outputs)
 }
 
 fn emit_assets(assets: AssetSpecification, status: &mut dyn StatusBackend) -> Result<(), OldError> {

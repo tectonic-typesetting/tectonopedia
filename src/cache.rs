@@ -309,6 +309,29 @@ impl Cache {
         }
     }
 
+    /// Make a [`RuntimeEntity`] from a [`RuntimeEntityIdent`], deriving an
+    /// up-to-date digest of its value if possible. If the entity does not
+    /// currently exist in the environment, a null digest value is used, so that
+    /// any subsequent comparison with a real digest should indicate a change.
+    /// If the return value is `Err`, some kind of unexpected error happened and
+    /// processing should give up.
+    pub fn unconditional_entity(
+        &mut self,
+        ident: RuntimeEntityIdent,
+        indices: &IndexCollection,
+    ) -> Result<RuntimeEntity> {
+        self.read_entity(ident, indices).map(|e| {
+            e.unwrap_or_else(|| {
+                let value_digest = DigestData::default();
+                dbg!(&value_digest);
+                RuntimeEntity {
+                    ident,
+                    value_digest,
+                }
+            })
+        })
+    }
+
     /// Returns true if the specified operation needs to be rerun.
     ///
     /// The input cache data should have been set up information about the
@@ -479,11 +502,17 @@ impl Cache {
         for info in data.outputs.drain(..) {
             pids.push(indices.persist_ident(info.0));
 
+            // An output file may have been modified. If we know what the new
+            // digest is, we can update our cache immediately. If not, make sure
+            // to remove it from the cache, so that we will recompute its digest
+            // if it is requested later.
             if let Some((value_digest, size)) = info.1 {
                 // Potentially risky to unwrap here
                 let path = indices.path_for_runtime_ident(info.0).unwrap();
                 let fentry = FileDigestEntry::create_for_known(&path, value_digest, size)?;
                 self.file_digests.insert(info.0, fentry);
+            } else {
+                self.file_digests.remove(&info.0);
             }
         }
 

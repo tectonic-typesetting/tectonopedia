@@ -266,6 +266,7 @@ pub trait TexProcessor {
     fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,
+        cache: &mut Cache,
         indices: &mut IndexCollection,
     ) -> Result<<Self::Worker as WorkerDriver>::OpInfo>;
 
@@ -331,7 +332,7 @@ pub fn process_inputs<'a, P: TexProcessor>(
         // In principle this could/should be a WorkerError, but the distinction
         // doesn't seem super important.
         let opinfo = atry!(
-            proc.make_op_info(input, indices);
+            proc.make_op_info(input, cache, indices);
             ["failed to prepare operation for input `{}`", indices.relpath_for_tex_source(input).unwrap()]
         );
 

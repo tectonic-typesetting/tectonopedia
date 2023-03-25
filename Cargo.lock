@@ -2369,6 +2369,7 @@ dependencies = [
  "clap 4.1.8",
  "csv",
  "digest 0.10.6",
+ "filetime",
  "generic-array",
  "notify-debouncer-mini",
  "serde",

@@ -26,12 +26,12 @@ use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::StatusBackend;
 
 use crate::{
-    cache::OpCacheData,
+    cache::{Cache, OpCacheData},
     gtry,
     index::IndexCollection,
     metadata::Metadatum,
     ogtry,
-    operation::{DigestComputer, DigestData, RuntimeEntityIdent},
+    operation::{DigestComputer, DigestData, RuntimeEntity, RuntimeEntityIdent},
     ostry,
     tex_pass::{TexOperation, TexProcessor, WorkerDriver, WorkerError, WorkerResultExt},
 };
@@ -43,6 +43,7 @@ pub struct Pass2Processor {
     metadata_ids: Vec<RuntimeEntityIdent>,
     n_outputs_total: usize,
     n_outputs_rerun: usize,
+    potential_modified_outputs: Vec<RuntimeEntity>,
 }
 
 impl Pass2Processor {
@@ -74,11 +75,25 @@ impl Pass2Processor {
             metadata_ids,
             n_outputs_total: 0,
             n_outputs_rerun: 0,
+            potential_modified_outputs: Vec::new(),
         })
     }
 
     pub fn n_outputs(&self) -> (usize, usize) {
         (self.n_outputs_rerun, self.n_outputs_total)
+    }
+
+    /// Consume this object and return a vector of potentially modified outputs.
+    ///
+    /// The entities returned here are a collection of entity idenifiers and
+    /// their digests from *before* the any build operations were run. The
+    /// caller can then compute updated digests of these files and see which if
+    /// any of them have actually changed. We need this functionality because we
+    /// explicitly update the modification times of our output files in a big
+    /// batch in `serve` mode, to try to keep things as simple as possibe for
+    /// Parcel's filesystem watcher.
+    pub fn into_potential_modified_outputs(self) -> Vec<RuntimeEntity> {
+        self.potential_modified_outputs
     }
 }
 
@@ -88,6 +103,7 @@ impl TexProcessor for Pass2Processor {
     fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,
+        cache: &mut Cache,
         indices: &mut IndexCollection,
     ) -> Result<Pass2OpInfo> {
         // The vector of metadata IDs is guaranteed to be sorted so that it can
@@ -100,7 +116,7 @@ impl TexProcessor for Pass2Processor {
 
         let metadata_id = self.metadata_ids[input_index];
 
-        Pass2OpInfo::new(input, metadata_id, self.merged_assets_id, indices)
+        Pass2OpInfo::new(input, metadata_id, self.merged_assets_id, cache, indices)
     }
 
     fn make_worker(
@@ -123,11 +139,13 @@ impl TexProcessor for Pass2Processor {
         ))
     }
 
-    fn accumulate_output(&mut self, item: Pass2OpInfo, was_rerun: bool) {
-        self.n_outputs_total += item.html_output_ids.len();
+    fn accumulate_output(&mut self, mut item: Pass2OpInfo, was_rerun: bool) {
+        self.n_outputs_total += item.html_outputs.len();
 
         if was_rerun {
-            self.n_outputs_rerun += item.html_output_ids.len();
+            self.n_outputs_rerun += item.html_outputs.len();
+            self.potential_modified_outputs
+                .append(&mut item.html_outputs);
         }
     }
 }
@@ -143,7 +161,11 @@ pub struct Pass2OpInfo {
     index_ids: Vec<RuntimeEntityIdent>,
 
     // Outputs
-    html_output_ids: Vec<RuntimeEntityIdent>,
+    /// The entity here encodes the identities of the outputs and their digests
+    /// *before* the build. After the build, we compare digests to identify any
+    /// outputs that have changed, which we need to inform Parcel.js about what
+    /// needs rebuilding.
+    html_outputs: Vec<RuntimeEntity>,
 }
 
 impl Pass2OpInfo {
@@ -151,6 +173,7 @@ impl Pass2OpInfo {
         input: RuntimeEntityIdent,
         metadata_id: RuntimeEntityIdent,
         merged_assets_id: RuntimeEntityIdent,
+        cache: &mut Cache,
         indices: &mut IndexCollection,
     ) -> Result<Self> {
         // Construct the operation ID. We depend on a variety inputs, but the
@@ -164,7 +187,7 @@ impl Pass2OpInfo {
         // We need to load the metadata file to know what indices we need and
         // what HTML outputs will be created.
         let mut index_names = HashSet::new();
-        let mut html_output_ids = Vec::new();
+        let mut html_outputs = Vec::new();
 
         let meta_path = indices.path_for_runtime_ident(metadata_id).unwrap();
 
@@ -190,7 +213,8 @@ impl Pass2OpInfo {
 
             match Metadatum::parse(&line)? {
                 Metadatum::Output(path) => {
-                    html_output_ids.push(RuntimeEntityIdent::new_output_file(path, indices));
+                    let ident = RuntimeEntityIdent::new_output_file(path, indices);
+                    html_outputs.push(cache.unconditional_entity(ident, indices)?);
                 }
 
                 Metadatum::IndexRef { index, .. } => {
@@ -216,7 +240,7 @@ impl Pass2OpInfo {
             merged_assets_id,
             metadata_id,
             index_ids,
-            html_output_ids,
+            html_outputs,
         })
     }
 }
@@ -256,8 +280,8 @@ impl Pass2Driver {
 
         // These outputs are created by Tectonic, so we can't calculate their
         // digests as we go; so might as well register them now.
-        for outid in &opinfo.html_output_ids {
-            cache_data.add_output(*outid);
+        for output in &opinfo.html_outputs {
+            cache_data.add_output(output.ident);
         }
 
         Pass2Driver {

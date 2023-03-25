@@ -32,7 +32,14 @@ use tectonic_status_base::{tt_error, tt_note, ChatterLevel, StatusBackend};
 
 use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pass, yarn};
 
-fn primary_build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
+/// The return value is potentially a list of the final outputs that were
+/// modified during this build process, if the boolean argument is true. The
+/// list may be empty if nothing actually changed, or if the argument is false.
+/// This list is used in "watch" mode to efficiently update Parcel.js.
+fn primary_build_implementation(
+    collect_paths: bool,
+    status: &mut dyn StatusBackend,
+) -> Result<Vec<String>> {
     // Set up data structures
 
     let mut indices = index::IndexCollection::new()?;
@@ -76,13 +83,17 @@ fn primary_build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
         indices.index_summary()
     );
 
-    // Generate the merged asset info and emit the files
+    // Generate the merged asset info and emit the files. Start collecting
+    // information about our outputs that will feed into the Parcel.js build
+    // process, specifically which ones have actually been modified. We use that
+    // for efficient updates in the "watch" mode.
 
     let merged_assets_id =
         assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
     tt_note!(status, "refreshed merged asset description");
 
-    assets::maybe_emit_assets_operation(merged_assets_id, &mut cache, &mut indices, status)?;
+    let mut maybe_modified_output_files =
+        assets::maybe_emit_assets_operation(merged_assets_id, &mut cache, &mut indices, status)?;
     tt_note!(status, "refreshed HTML support assets");
 
     // TeX pass 2, emitting
@@ -91,18 +102,61 @@ fn primary_build_implementation(status: &mut dyn StatusBackend) -> Result<()> {
     tex_pass::process_inputs(&inputs, &mut p2r, &mut cache, &mut indices, status)?;
     let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
     tt_note!(
-            status,
-            "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
-        );
+        status,
+        "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
+    );
 
-    // Generate the entrypoint file
+    maybe_modified_output_files.append(&mut p2r.into_potential_modified_outputs());
 
-    entrypoint_file::maybe_make_entrypoint_operation(&mut cache, &mut indices, status)?;
+    // Generate the entrypoint file, and start generating the list of output
+    // files that actually *were* modified. Unlike the TeX pass 2 and assets
+    // steps, it's convenient for the entrypoint stage to figure out whether the
+    // output actually changed or not.
+
+    let mut modified_output_files = Vec::new();
+
+    let id = entrypoint_file::maybe_make_entrypoint_operation(&mut cache, &mut indices, status)?;
     tt_note!(status, "refreshed entrypoint file");
-    Ok(())
+
+    if let Some(id) = id {
+        modified_output_files.push(id);
+    }
+
+    // Figure out which of the other outputs have been modified.
+
+    for output in maybe_modified_output_files.drain(..) {
+        let updated = cache.require_entity(output.ident, &indices)?;
+
+        if updated.value_digest != output.value_digest {
+            modified_output_files.push(output.ident);
+        }
+    }
+
+    // TODO: rewrite the cache file state info!!!
+
+    // Translate the entity IDs into relative paths, if we care. That conversion
+    // relies on the IndexCollection, which we're about to throw away, which is
+    // why we leave the "ident" space
+
+    let paths = if collect_paths {
+        modified_output_files
+            .into_iter()
+            .map(|o| indices.relpath_for_output_file(o))
+            .filter_map(|o| o)
+            .map(|o| o.to_owned())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(paths)
 }
 
-fn build_through_index(do_rename: bool, status: &mut dyn StatusBackend) -> Result<Instant> {
+fn build_through_index(
+    do_rename: bool,
+    collect_paths: bool,
+    status: &mut dyn StatusBackend,
+) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
 
     // "Claim" the existing build tree to enable an incremental build,
@@ -143,7 +197,7 @@ fn build_through_index(do_rename: bool, status: &mut dyn StatusBackend) -> Resul
 
     // Main build.
 
-    primary_build_implementation(status)?;
+    let modified_files = primary_build_implementation(collect_paths, status)?;
 
     tt_note!(
         status,
@@ -163,7 +217,7 @@ fn build_through_index(do_rename: bool, status: &mut dyn StatusBackend) -> Resul
         ["failed to generate fulltext index"]
     );
 
-    Ok(t0)
+    Ok((t0, modified_files))
 }
 
 /// The standalone build operation.
@@ -177,7 +231,7 @@ impl BuildArgs {
     /// In the "build" op, we do the main build, then just cap it off with a
     /// `yarn build` and we're done.
     pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
-        let t0 = build_through_index(true, status)?;
+        let (t0, _) = build_through_index(true, false, status)?;
 
         atry!(
             yarn::yarn_build(status);
@@ -225,7 +279,7 @@ impl WatchArgs {
     }
 
     fn finish_exec(self, watcher: Watcher) -> Result<()> {
-        eprintln!("XXX launch yarn start!");
+        eprintln!("XXX launch `yarn serve`!");
 
         // Now set up the debounced notifier that will handle things from here
         // on out.
@@ -285,13 +339,26 @@ impl Watcher {
     fn build_inner(&mut self) -> Result<()> {
         let status = self.status.as_mut();
 
-        let t0 = build_through_index(self.last_succeeded, status)?;
+        let (t0, changed) = build_through_index(self.last_succeeded, true, status)?;
 
         tt_note!(
             status,
             "primary build plus index took {:.1} seconds",
             t0.elapsed().as_secs_f32()
         );
+
+        // Touch the modified files; Parcel's change-detection code doesn't
+        // catch atomic replacements.
+
+        for output in &changed {
+            let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
+
+            atry!(
+                filetime::set_file_mtime(&p, filetime::FileTime::now());
+                ["unable to update modification time of file `{}`", p]
+            );
+        }
+
         Ok(())
     }
 }

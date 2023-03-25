@@ -640,6 +640,25 @@ impl IndexCollection {
         }
     }
 
+    /// Get a relative path associated with an output file
+    ///
+    /// This will yield a value for either an output file or an "other" file
+    /// with a prefix of `staging`, since the "output file" index is reserved
+    /// specifically for TeX-generated HTML outputs.
+    pub(crate) fn relpath_for_output_file(&self, rei: RuntimeEntityIdent) -> Option<&str> {
+        match rei {
+            RuntimeEntityIdent::OutputFile(s) => Some(self.indices[OUTPUTS_INDEX_INDEX].resolve(s)),
+
+            RuntimeEntityIdent::OtherFile(s) => {
+                let p = self.indices[OTHER_PATHS_INDEX_INDEX].resolve(s);
+                // Do we need to be agnostic to the directory separator?
+                p.strip_prefix("staging/")
+            }
+
+            _ => None,
+        }
+    }
+
     /// Convert a [`PersistEntityIdent`] to a [`RuntimeEntityIdent`].
     pub fn runtime_ident(&mut self, pei: &PersistEntityIdent) -> RuntimeEntityIdent {
         match pei {
