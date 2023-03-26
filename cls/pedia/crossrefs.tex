@@ -1,0 +1,40 @@
+% Copyright 2022-2023 the Tectonic Project
+% Licensed under the MIT License
+%
+% Cross-references among Tectonopedia pages.
+%
+% \pediaLogRef{INDEX}{ENTRY}{FLAGS}
+%  Log a reference to an index entry in the metadata file.
+%  This low-level command does not actally expand to any content!
+%  An "l" in the flags indicates that the entry's definition location
+%  must be defined. A "t" in the flags indicates that the entry's
+%  text must be defined.
+\newcommand{\pediaLogRef}[3]{%
+  \immediate\write\pediaIndex{\string\iref{#1}{#2}{#3}}%
+}
+%
+% \pediaEnsureRefCS{INDEX}{ENTRY}{DATATYPE}
+%  Ensure that a pedia cross-referencing control string is defined to
+%  `?` if it is not already defined. This will kick in in the first pass,
+%  when the cross-referencing information is still being gathered. In
+%  the second pass, these control strings will be defined by the
+%  driver.
+\newcommand{\pediaEnsureRefCS}[3]{%
+  \unless\ifcsname pedia resolve**#1**#2**#3\endcsname
+    \expandafter\def\csname pedia resolve**#1**#2**#3\endcsname{?}%
+  \fi
+}
+%
+% \pediaLinkRef{INDEX}{ENTRY}
+%  Create an internal <a> link to an index entry with a defined location
+%  and textual representation.
+\newcommand{\pediaLinkRef}[2]{%
+  \pediaLogRef{#1}{#2}{lt}%
+  \pediaEnsureRefCS{#1}{#2}{loc}%
+  \pediaEnsureRefCS{#1}{#2}{text plain}%
+  \hrefInternal{%
+    \pediaRelTop\csname pedia resolve**#1**#2**loc\endcsname%
+   }{%
+    \csname pedia resolve**#1**#2**text tex\endcsname%
+   }%
+}

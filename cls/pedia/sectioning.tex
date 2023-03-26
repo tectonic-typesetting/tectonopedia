@@ -1,0 +1,17 @@
+% Copyright 2022-2023 the Tectonic Project
+% Licensed under the MIT License
+%
+% Sectioning of long texts.
+%
+% Redefining sectioning commands to emit <h{1,2,3,4}> tags in the HTML. TODO:
+% there is probably a better way to do this.
+%
+\RequirePackage{titlesec}
+% From Section 8.2 of the titlesec docs, the settings here correspond to the
+% standard formats.
+%\titleformat{\chapter}[display]{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{\special{tdux:mfs h1^^JNAT}}[\special{tdux:me h1}]
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{\special{tdux:mfs h2^^JNAT}}[\special{tdux:me h2}]%
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries}{\thesubsubsection}{1em}{\special{tdux:mfs h3^^JNAT}}[\special{tdux:me h3}]%
+%\titleformat{\paragraph}[runin]{\normalfont\normalsize\bfseries}{\theparagraph}{1em}{}
+%\titleformat{\subparagraph}[runin]{\normalfont\normalsize\bfseries}{\thesubparagraph}{1em}{}

@@ -1,0 +1,15 @@
+% Copyright 2022-2023 the Tectonic Project
+% Licensed under the MIT License
+%
+% Miscellaneous typography setup and helpers.
+%
+% \b is an alias for \textbf
+\let\b=\textbf
+%
+% \i is an alias for \emph (\e is taken for entry referencing)
+\let\i=\emph
+%
+\let\justTeX=\TeX
+\def\TeX{\special{tdux:cs math}\justTeX\special{tdux:ce math}}
+\let\justLaTeX=\LaTeX
+\def\LaTeX{\special{tdux:cs math}\justLaTeX\special{tdux:ce math}}

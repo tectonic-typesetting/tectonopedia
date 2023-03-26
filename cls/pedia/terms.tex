@@ -1,0 +1,56 @@
+% Copyright 2022-2023 the Tectonic Project
+% Licensed under the MIT License
+%
+% "terms": classic wiki-style linking.
+%
+% TODO: add starred variant when the typeset form of the term is different than
+% the plaintext.
+\makeatletter
+\newtoks\pedia@termtmp
+\newcommand{\DeclareTerm}{%
+  \@ifstar{\pedia@declareTermStarred}{\pedia@declareTermNoStar}%
+}
+\newcommand{\pedia@declareTermNoStar}{\pediaScanVerbatim\pedia@declareTermNoStarTail}
+\newcommand{\pedia@declareTermNoStarTail}{%
+  % the single form, used for both plain and TeX, is in \pedia@maybeVerbatimToks
+  \immediate\write\pediaIndex{\string\idef{terms}{\the\pedia@maybeVerbatimToks}{}}%
+  \immediate\write\pediaIndex{\string\itext{terms}{\the\pedia@maybeVerbatimToks}{\the\pedia@maybeVerbatimToks}{\the\pedia@maybeVerbatimToks}}%
+}
+\newcommand{\pedia@declareTermStarred}{\pediaScanVerbatim\pedia@declareTermStarredTailA}
+\newcommand{\pedia@declareTermStarredTailA}{%
+  % the TeX form is in \pedia@maybeVerbatimToks
+  \pedia@termtmp=\pedia@maybeVerbatimToks
+  \pediaScanVerbatim\pedia@declareTermStarredTailB
+}
+\newcommand{\pedia@declareTermStarredTailB}{%
+  % the TeX form is in \pedia@termtmp; the plain form is \pedia@maybeVerbatimToks
+  % (since it is scanned in verbatim mode)
+  \immediate\write\pediaIndex{\string\idef{terms}{\the\pedia@maybeVerbatimToks}{}}%
+  \immediate\write\pediaIndex{\string\itext{terms}{\the\pedia@maybeVerbatimToks}{\the\pedia@termtmp}{\the\pedia@maybeVerbatimToks}}%
+}
+\def\`{%
+  \begingroup
+  % Need to do \@noligs before our customization because \@noligs resets the
+  % catcode of ` to be active!
+  \@noligs
+  \catcode`\\=12
+  \catcode`\$=12
+  \catcode`\&=12
+  \catcode`\#=12
+  \catcode`\%=12
+  \catcode`\~=12
+  \catcode`\_=12
+  \catcode`\^=12
+  \catcode`\{=12
+  \catcode`\}=12
+  \catcode`\`=2% = endgroup
+  \pedia@makeActiveWhitespace
+  \pedia@defineActiveWhitespace
+  \afterassignment\pedia@termrefTail
+  \global\pedia@maybeVerbatimToks=\bgroup%
+}%
+\def\pedia@termrefTail{%
+  \endgroup
+  \pediaLinkRef{terms}{\the\pedia@maybeVerbatimToks}%
+}
+\makeatother

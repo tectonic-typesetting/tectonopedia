@@ -1,0 +1,67 @@
+% Copyright 2022-2023 the Tectonic Project
+% Licensed under the MIT License
+%
+% Itemizations, enumerations, etc.
+%
+% Futzing with list commands to add HTML tags.
+%
+\RequirePackage{enumitem}
+%
+\makeatletter
+\newif\if@pedia@firstlistitem
+\let\pedia@parAlias=\par % not sure why we need this, but here we are.
+%
+\setlist[itemize]{%
+  label={},
+  before*={%
+    \let\pedia@save@item=\item
+    \@pedia@firstlistitemtrue
+    \def\item{%
+      \if@pedia@firstlistitem
+        \pedia@save@item
+        \@pedia@firstlistitemfalse
+      \else
+        \pedia@parAlias
+        \special{tdux:me li}%
+        \pedia@save@item
+      \fi
+      \special{tdux:mfs li}%
+      \leavevmode
+      }%
+    \special{tdux:mfs ul}%
+  },
+  after*={%
+    \pedia@parAlias
+    \special{tdux:me li}
+    \special{tdux:me ul}
+    \let\item=\pedia@save@item
+  }%
+}
+%
+\setlist[enumerate]{%
+  label={},
+  before*={%
+    \let\pedia@save@item=\item
+    \@pedia@firstlistitemtrue
+    \def\item{%
+      \if@pedia@firstlistitem
+        \pedia@save@item
+        \@pedia@firstlistitemfalse
+      \else
+        \pedia@parAlias
+        \special{tdux:me li}%
+        \pedia@save@item
+      \fi
+      \special{tdux:mfs li}%
+      \leavevmode
+    }%
+    \special{tdux:mfs ol}%
+  },
+  after*={%
+    \pedia@parAlias
+    \special{tdux:me li}
+    \special{tdux:me ol}
+    \let\item=\pedia@save@item
+  }%
+}
+\makeatother
