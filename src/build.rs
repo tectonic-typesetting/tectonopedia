@@ -87,12 +87,12 @@ fn primary_build_implementation(
     index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
 
     if terse_output {
-        print!(" int-index");
+        print!(" cross-index");
         let _ignored = std::io::stdout().flush();
     } else {
         tt_note!(
             status,
-            "refreshed internal indices         - {}",
+            "refreshed cross indices            - {}",
             indices.index_summary()
         );
     }
@@ -256,7 +256,7 @@ fn build_through_index(
     );
 
     if terse_output {
-        print!(" ft-index");
+        print!(" index-text");
         let _ignored = std::io::stdout().flush();
     }
 
@@ -383,7 +383,7 @@ impl Watcher {
 
         println!();
         let (t0, changed) = build_through_index(self.last_succeeded, true, true, status)?;
-        println!("... {:.1} seconds elapsed\n\n", t0.elapsed().as_secs_f32());
+        println!(" ... {:.1} seconds elapsed\n\n", t0.elapsed().as_secs_f32());
 
         // Touch the modified files; Parcel's change-detection code doesn't
         // catch atomic replacements.

@@ -733,7 +733,7 @@ pub fn construct_indices(
     // unchanged won't catch that.
 
     let mut dc = DigestComputer::default();
-    dc.update("internal_index_v2");
+    dc.update("cross_index_v2");
 
     for input in metadata_ids {
         input.update_digest(&mut dc, indices);
@@ -743,7 +743,7 @@ pub fn construct_indices(
 
     let needs_reemit = atry!(
         cache.operation_needs_rerun(&opid, indices, status);
-        ["failed to probe cache for internal indexing operation"]
+        ["failed to probe cache for cross-indexing operation"]
     );
 
     // Create the entity IDs for our output files, which must be done in two
