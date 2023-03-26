@@ -18,6 +18,9 @@
           <h1 class="menu-title" v-text="bookName"></h1>
 
           <div class="right-buttons">
+            <button class="icon-button" type="button" @click="onSearchClicked">
+              <FontAwesomeIcon icon="fa-solid fa-magnifying-glass" />
+            </button>
           </div>
         </div>
 
@@ -27,12 +30,9 @@
       </div>
     </div>
   </div>
-
 </template>
 
-<style src="./style.scss">
-
-</style>
+<style src="./style.scss"></style>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
@@ -52,6 +52,10 @@ const toolManager = ref();
 
 function onDispatchClicked() {
   toolManager.value?.toggleDispatch();
+}
+
+function onSearchClicked() {
+  toolManager.value?.toggleSearch();
 }
 
 // Global keybindings
