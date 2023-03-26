@@ -9,7 +9,15 @@
 % \i is an alias for \emph (\e is taken for entry referencing)
 \let\i=\emph
 %
+%
+% The zero-sized hspaces here address an issue that I don't understand where the
+% reference point of the canvas is messed up if one of these macros appears at
+% the beginning of a paragraph, causing the word "TeX" (etc.) to appear in the
+% wrong location. This presumably has something to do with how the \special gets
+% positioned at the very start of a paragraph but I haven't looked into it in
+% detail. The \hspace solution is lame, but so far seems effective.
 \let\justTeX=\TeX
-\def\TeX{\special{tdux:cs math}\justTeX\special{tdux:ce math}}
+\def\TeX{\hspace{0in}\special{tdux:cs math}\justTeX\special{tdux:ce math}}
+%
 \let\justLaTeX=\LaTeX
-\def\LaTeX{\special{tdux:cs math}\justLaTeX\special{tdux:ce math}}
+\def\LaTeX{\hspace{0in}\special{tdux:cs math}\justLaTeX\special{tdux:ce math}}

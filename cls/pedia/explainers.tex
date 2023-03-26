@@ -3,16 +3,16 @@
 %
 % Articles in the "explainer" category.
 %
-% \explainer{SLUG}{TEX-TITLE}{PLAIN-TITLE}
+% \Explainer{SLUG}{TEX-TITLE}{PLAIN-TITLE}
 %  Define an Explainer
 %
 %  Because the titles need to be parsed as verbatim code for
 %  indexing, the actual implementation of this command is split.
 %
-%  TODO: massive duplication!!!!
+%  TODO: massive duplication with other page types!!!!
 \makeatletter
 %
-\newcommand{\explainer}[1]{%
+\newcommand{\Explainer}[1]{%
   % save the slug:
   \def\tmp@b{#1}%
 
@@ -45,3 +45,9 @@
   \tduxSetTemplateVariable{pediaBookName}{Tectonopedia: Explainers}
 }
 \makeatother
+%
+% \explain{ENTRY}
+%  Create an internal link to an explainer, identified by its slug.
+\newcommand{\explain}[1]{%
+  \pediaLinkRef{explainers}{#1}%
+}

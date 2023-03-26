@@ -1,0 +1,156 @@
+\Explainer{tectonopedia-design}{The Design of the Tectonopedia}{The Design of the Tectonopedia}
+
+At its heart, the Tectonopedia is a technical documentation website created by a
+software tool. While there are many existing technical documentation systems,
+there are \i{even more} choices that can go into their design, and Tectonopedia
+occupies a somewhat unusal niche. This page attempts to explain some of the key
+decisions and their motivations.
+
+\section*{\TeX-Based}
+
+The biggest decision of all is that the underlying content of the Tectonopedia
+is expressed as \TeX\ source. While it's surely possible to construct a similar
+system based on formats like \`Markdown`, the whole animating principle of the
+Tectonic project is that \TeX\ is a uniquely powerful tool for creating complex
+technical documentation. So, Tectonopedia aims to demonstrate that. The article
+\explain{why-tex} explores this topic in greater depth.
+
+\section*{Bundler-Powered}
+
+The approach taken by Tectonic and Tectonopedia is unique, as far as we know, in
+that the HTML output produced from the \TeX\ sources is intended to be passed
+through a modern web bundler framework. In the specific case of Tectonopedia,
+\href{https://yarnpkg.com/}{Yarn} is used to drive the
+\href{https://parceljs.org/}{Parcel.js} bundler, and the frontend of the website
+is a \href{https://vuejs.org/}{Vue} app written in
+\href{https://typescriptlang.org/}{TypeScript}. (These particular tools were
+chosen because of the qualitative feeling that they are better-engineered than
+their competitors.) While the Tectonopedia software can emit a full tree of HTML
+files without requiring these external tools, the final assembly of the website
+relies on them.
+
+This design is motivated by the belief that featureful, modern web apps are
+simply too complex to be created in any other way. While present-day
+JavaScript/web development ecosystem has a \i{lot} of frustrating
+characteristics, it does enable people to create apps that are much more
+sophisticated than can be achieved with hand-coded HTML, CSS, and JavaScript.
+And something like Tectonopedia is best thought of as a web application that
+just happens to be very text-heavy.
+
+Although Tectonic does not yet support this, in the future its output might
+become even more bundler-centric by support component markup languages like
+\href{https://react.dev/learn/writing-markup-with-jsx}{JSX} as well as plain
+HTML. This would provide a clean path for a \TeX\ document to include, say,
+interactive buttons and controls, not just the kinds of content that can easily
+be created with standard HTML tags.
+
+\section*{Like Wikipedia, Not a Linear Book}
+
+As the name might suggest, the content structure of Tectonopedia is \i{strongly}
+inspired by \href{https://www.wikipedia.org/}{Wikipedia}: it’s a big bag of
+content with no overarching structure imposed. This structure is in contrast to
+that demanded by tools like \href{https://rust-lang.github.io/mdBook/}{mdBook}
+or, well, regular printed books, which require that all of their content be
+placed into an essentially linear structure.
+
+The linear structure imposed by the book format becomes unwieldy for reference
+documentation when there are lots of small items (e.g., individual \TeX\
+commands) that each need to be treated. The book format adds a barrier to
+including new content in the collection: one must decide where to slot it into
+the global linear structure. Sometimes this decision is easy, but sometimes it
+can be quite challenging, and it is unfriendly to the sort of distributed
+authorship that has allowed Wikipedia to reach its uniquely expansive scope.
+
+The unstructured “encyclopedia” format has its own risk: content can simply get
+lost if nothing links to it. Preventing this is in fact a major Tectonopedia
+design goal. Fortunately, one of the advantages of \TeX\ is that it can make
+rich internal cross-referencing extremely easy, and full-text search was
+prioritized as an early feature of the Tectonopedia impementation.
+
+\section*{Rich Cross-Referencing}
+
+The remark at the end of the previous section bears emphasis. One of the core
+tenets of the Tectonopedia design is that rich cross-referencing is an
+absolutely fundamental characteristic of technical documentation, and that the
+Tectonopedia software should therefore make the creation of cross-references as
+easy as possible.
+
+If you think about most API documentation tools like
+\href{https://www.sphinx-doc.org/}{Sphinx} or
+\href{https://doc.rust-lang.org/rustdoc/}{Rustdoc}, cross-referencing is
+generally an essential feature. However, the documentation created by these
+tools is generally self-contained: sophisticated cross-referencing becomes much
+more difficult if you wish to leave the confines of the language being
+documented, and linking \i{into} the documentation is often difficult. An
+animating principle of Tectonic and the Tectonopedia is that the power of the
+\TeX\ language should make it possible to cross-reference richly across
+languages and frameworks.
+
+\section*{Not Just Reference Material}
+
+The content design of Tectonopedia is heavily influenced by the \`Divio
+documentation system`, which argues that technical documentation can be broken
+into four major categories: reference material, how-tos, tutorials, and
+explainers. Many documentation collections \i{heavily} overweight reference
+material at the expense of the other categories.
+
+Traditional “encyclopedia-style” content corresponds closely to the “reference
+material” category of the Divio model. Other content categories, like tutorials
+and how-tos, could potentially be hosted in another framework. But why not keep
+it all in one place? A unified structure will hopefully encourage more balance
+among the different categories, as well as once again promoting the rich
+cross-referencing that we seek.
+
+\section*{Git-Backed}
+
+Tectonopedia content is stored in a Git repository, as opposed to other storage
+systems such as the relational databases used by many wiki and
+content-management systems.
+
+While there's nothing wrong about using a relational database for content
+management, a Git-based approach fits well with the rest of the Tectonopedia
+design as it currently stands: the Tectonopedia framework spans a Rust program,
+\TeX\ support files, TypeScript/Vue frontend code, and the actual encyclopedia
+content.
+
+This design may pose a challenge in the future because we hope that one day
+Tectonopedia will be editable directly through its web interface, in the style
+of traditional wikis. The technical implementation of this capability seems
+challenging, although there are plenty of Git-backed wikis out there like
+\href{https://github.com/gollum/gollum}{gollum}.
+
+\section*{Implicit URL Structure}
+
+Many file-based site generators adopt a simple scheme where the files that you
+store in your repository map directly to their public URLs: the text in
+\texttt{about/our-story.md} is exposed at the URL \texttt{/about/our-story/},
+and so on. We call this an \i{explicit} URL structure. Tectonopedia takes a
+different, \i{implicit} approach.
+
+The explicit URL approach does not mesh well with Tectonic's encyclopedia-style,
+big-bag-of-content scheme, which encourages a flat URL hierarchy. Consider
+Wikipedia itself, where millions of pages may live directly under the
+\texttt{/wiki/} path prefix. It would be extremely inconvenient to have to
+mirror this structure inside one's Git repository!
+
+Instead, Tectonopedia's URL structure is implicit in its content. An input file
+may contain a command \tex`\Explainer{tectonopedia-design}` that declares a new
+explainer living at the URL path \texttt{/explain/tectonopedia-design/},
+regardless of the path of the actual input file. In fact, in Tectonopedia, one
+input file can declare any number of outputs (zero, one, or many), allowing
+several similar pages to be managed in a single file.
+
+If the file structure of the inputs doesn't affect the URL structure of the
+outputs, what \i{does} it affect — how should the input filenames be structured?
+In a certain sense, it just doesn't matter. But, those are the files that you
+actually open up and edit to update the Tectonopedia content, and in the future,
+the aspiration is that the Tectonopedia code will analyze the Git history of its
+backing repository to do things like assign authorship and expose the
+modification history of various pages. So the structure of input files should
+really be whatever makes editing convenient, including the knowledge that
+changes will be tracked in Git and eventually surfaced in the user interface.
+
+Another yet-to-be-implemented feature is logging of the exposed Tectonopedia URL
+structure such the tool can make sure that existing URLs don't break even as
+users rename pages. The public Tectonopedia URL structure can be thought of as
+an “API” that we want to avoid breaking whenever possible.
