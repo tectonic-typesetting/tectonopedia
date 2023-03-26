@@ -323,7 +323,6 @@ impl Cache {
         self.read_entity(ident, indices).map(|e| {
             e.unwrap_or_else(|| {
                 let value_digest = DigestData::default();
-                dbg!(&value_digest);
                 RuntimeEntity {
                     ident,
                     value_digest,
