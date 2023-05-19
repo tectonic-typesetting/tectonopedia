@@ -1,7 +1,7 @@
 # Copyright 2023 the Tectonic Project
 # Licensed under the MIT License.
 #
-# Deployment pipeline, run when all CI tests pass on `master` or `rc`.
+# Deployment pipeline, run when all CI tests pass on `main` or `rc`.
 # Parameters:
 #
 # - `isMainDev`: this is an update to the main development branch; update
