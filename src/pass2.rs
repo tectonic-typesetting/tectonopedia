@@ -247,7 +247,7 @@ impl Pass2OpInfo {
 
 impl TexOperation for Pass2OpInfo {
     fn operation_ident(&self) -> DigestData {
-        self.opid.clone()
+        self.opid
     }
 }
 
@@ -303,7 +303,7 @@ impl WorkerDriver for Pass2Driver {
 
     fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()> {
         writeln!(stdin, "{}\n---", self.resolved_ref_tex)?;
-        self.assets.save(stdin).map_err(|e| e.into())
+        self.assets.save(stdin)
     }
 
     // TODO: record additional inputs if/when they are detected
@@ -390,7 +390,7 @@ impl SecondPassImplArgs {
         );
 
         let mut sess = ProcessingSessionBuilder::new_with_security(security);
-        sess.primary_input_buffer(&input.as_bytes())
+        sess.primary_input_buffer(input.as_bytes())
             .tex_input_name("texput")
             .build_date(std::time::SystemTime::now())
             .bundle(ogtry!(config.default_bundle(false, status)))

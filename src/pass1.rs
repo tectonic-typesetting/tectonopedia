@@ -141,7 +141,7 @@ pub struct Pass1OpInfo {
 
 impl TexOperation for Pass1OpInfo {
     fn operation_ident(&self) -> DigestData {
-        self.opid.clone()
+        self.opid
     }
 }
 
@@ -268,7 +268,7 @@ impl FirstPassImplArgs {
         );
 
         let mut sess = ProcessingSessionBuilder::new_with_security(security);
-        sess.primary_input_buffer(&input.as_bytes())
+        sess.primary_input_buffer(input.as_bytes())
             .tex_input_name("texput")
             .build_date(std::time::SystemTime::now())
             .bundle(ogtry!(config.default_bundle(false, status)))

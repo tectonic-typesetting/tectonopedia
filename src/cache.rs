@@ -8,7 +8,6 @@
 //! specific build operations need to be rerun aims to be flexible so that it
 //! can capture lots of different steps.
 
-use bincode;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::{
@@ -240,7 +239,7 @@ impl Cache {
         if let Some(fentry) = self.file_digests.get(&ident) {
             return Ok(Some(RuntimeEntity {
                 ident,
-                value_digest: fentry.digest.clone(),
+                value_digest: fentry.digest,
             }));
         }
 
@@ -266,11 +265,11 @@ impl Cache {
             Err(e) => return Err(e).context(format!("failed to probe file `{}`", p.display())),
         };
 
-        self.file_digests.insert(ident.clone(), fentry.clone());
+        self.file_digests.insert(ident, fentry);
 
         Ok(Some(RuntimeEntity {
             ident,
-            value_digest: fentry.digest.clone(),
+            value_digest: fentry.digest,
         }))
     }
 
@@ -609,7 +608,7 @@ impl SortedPersistEntitySet {
     fn as_entities(&self) -> impl Iterator<Item = PersistEntity> + '_ {
         self.0.iter().map(|(k, v)| PersistEntity {
             ident: k.clone(),
-            value_digest: v.clone(),
+            value_digest: *v,
         })
     }
 }

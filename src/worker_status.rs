@@ -55,7 +55,7 @@ impl WorkerStatusBackend {
     fn generic_message(&mut self, kind: MessageKind, prefix: Option<&str>, args: Arguments) {
         let text = match prefix {
             Some(s) => {
-                let s = s.strip_suffix(":").unwrap_or(s);
+                let s = s.strip_suffix(':').unwrap_or(s);
                 format!("{}({}):", s, self.context)
             }
 

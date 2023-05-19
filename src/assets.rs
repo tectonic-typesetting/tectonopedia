@@ -166,7 +166,7 @@ pub fn maybe_emit_assets_operation(
     }
 
     atry!(
-        emit_assets(assets, status).map_err(|e| SyncError::new(e));
+        emit_assets(assets, status).map_err(SyncError::new);
         ["failed to emit Tectonic HTML assets"]
     );
 
@@ -206,7 +206,7 @@ fn emit_assets(assets: AssetSpecification, status: &mut dyn StatusBackend) -> Re
         \\input{postamble}\n";
 
     let mut sess = ProcessingSessionBuilder::new_with_security(security);
-    sess.primary_input_buffer(&input.as_bytes())
+    sess.primary_input_buffer(input.as_bytes())
         .tex_input_name("texput")
         .build_date(std::time::SystemTime::now())
         .bundle(bundle)

@@ -186,7 +186,7 @@ fn process_one_input<W: WorkerDriver>(
         let mut stdin = child.stdin.take().unwrap();
 
         if let Err(e) = driver.send_stdin(&mut stdin) {
-            tt_error!(status, "failed to send input to TeX worker"; e.into());
+            tt_error!(status, "failed to send input to TeX worker"; e);
             return Err(WorkerError::Specific(()));
         }
     }
@@ -244,7 +244,6 @@ fn process_one_input<W: WorkerDriver>(
     driver.finish().map_err(|e| {
         e.map(|inner| {
             tt_error!(status, "error finalizing results"; inner);
-            ()
         })
     })
 }

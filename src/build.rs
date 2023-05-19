@@ -176,8 +176,7 @@ fn primary_build_implementation(
     let paths = if collect_paths {
         modified_output_files
             .into_iter()
-            .map(|o| indices.relpath_for_output_file(o))
-            .filter_map(|o| o)
+            .filter_map(|o| indices.relpath_for_output_file(o))
             .map(|o| o.to_owned())
             .collect()
     } else {
@@ -223,11 +222,11 @@ fn build_through_index(
                     bail!("cannot proceed with build");
                 }
 
-                Err(e) => return Err(e).context(format!("failed to create directory `staging`")),
+                Err(e) => return Err(e).context("failed to create directory `staging`".to_string()),
             },
 
             // Some other problem - bail.
-            Err(e) => return Err(e).context(format!("failed to rename `build` to `staging`")),
+            Err(e) => return Err(e).context("failed to rename `build` to `staging`".to_string()),
         }
     }
 

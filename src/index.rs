@@ -152,7 +152,7 @@ impl Index {
 
         let mut w = csv::Writer::from_writer(dest);
 
-        w.write_record(&[
+        w.write_record([
             "entry",
             "loc_output",
             "loc_fragment",
@@ -204,19 +204,19 @@ pub struct IndexCollection {
     root: PathBuf,
 }
 
-pub const INDEX_OF_INDICES_NAME: &'static str = "ioi";
+pub const INDEX_OF_INDICES_NAME: &str = "ioi";
 const INDEX_OF_INDICES_INDEX: usize = 0;
 
-pub const INPUTS_INDEX_NAME: &'static str = "inputs";
+pub const INPUTS_INDEX_NAME: &str = "inputs";
 const INPUTS_INDEX_INDEX: usize = 1;
 
-pub const OUTPUTS_INDEX_NAME: &'static str = "outputs";
+pub const OUTPUTS_INDEX_NAME: &str = "outputs";
 const OUTPUTS_INDEX_INDEX: usize = 2;
 
-pub const OTHER_PATHS_INDEX_NAME: &'static str = "otherpaths";
+pub const OTHER_PATHS_INDEX_NAME: &str = "otherpaths";
 const OTHER_PATHS_INDEX_INDEX: usize = 3;
 
-pub const FRAGMENTS_INDEX_NAME: &'static str = "fragments";
+pub const FRAGMENTS_INDEX_NAME: &str = "fragments";
 const FRAGMENTS_INDEX_INDEX: usize = 4;
 
 impl IndexCollection {

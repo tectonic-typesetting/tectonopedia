@@ -22,7 +22,6 @@
 //!   input entities. If an operation is run repeatedly with the same inputs, it
 //!   should generate the same outputs.
 
-use bincode;
 use digest::OutputSizeUser;
 use generic_array::GenericArray;
 use serde::{Deserialize, Serialize};
@@ -58,6 +57,7 @@ type PathId = InputId;
 /// See also [`RuntimeEntityIdent`], in which string values have been interned
 /// into ids.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub enum PersistEntityIdent {
     /// A TeX input file. The string value is the path to the file in question,
     /// relative to the project root.
@@ -153,6 +153,7 @@ pub struct PersistEntity {
 /// expanded into owned strings. That type can be serialized and deserialized,
 /// whereas this type implements [`std::marker::Copy`].
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[allow(clippy::enum_variant_names)]
 pub enum RuntimeEntityIdent {
     /// A source file. The id resolves to the path to the file in question,
     /// relative to the project root.
@@ -306,7 +307,7 @@ impl io::Write for OpOutputStream {
         // If the actual write to disk is short, make sure our digest honors
         // that.
         let size = self.file.write(buf)?;
-        self.dc.write(&buf[..size])?;
+        self.dc.write_all(&buf[..size])?;
         self.size += size as u64;
         Ok(size)
     }

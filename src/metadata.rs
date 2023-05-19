@@ -124,7 +124,7 @@ impl<'a> Metadatum<'a> {
 
 /// Parse a string of the form `\CSEQ{A}{B}{C}` into the control sequence and an
 /// interator of the individual terms.
-fn parse_cseq_line<'a>(s: &'a str) -> Result<(&'a str, CseqLineTerms<'a>)> {
+fn parse_cseq_line(s: &str) -> Result<(&str, CseqLineTerms<'_>)> {
     let mut it = s.char_indices();
 
     match it.next() {
