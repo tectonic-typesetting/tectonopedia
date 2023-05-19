@@ -24,3 +24,10 @@ termcolor = "^1.1"
 threadpool = "^1.8"
 toml = "0.5"
 walkdir = "^2"
+
+[features]
+default = ["geturl-reqwest"]
+external-harfbuzz = ["tectonic/external-harfbuzz"]
+geturl-curl = ["tectonic/geturl-curl"]
+geturl-reqwest = ["tectonic/geturl-reqwest"]
+native-tls-vendored = ["tectonic/native-tls-vendored"]
