@@ -222,7 +222,9 @@ fn build_through_index(
                     bail!("cannot proceed with build");
                 }
 
-                Err(e) => return Err(e).context("failed to create directory `staging`".to_string()),
+                Err(e) => {
+                    return Err(e).context("failed to create directory `staging`".to_string())
+                }
             },
 
             // Some other problem - bail.
