@@ -1,0 +1,41 @@
+# Copyright 2023 the Tectonic Project
+# Licensed under the MIT License.
+#
+# Generic setup in the deployment stage. The main goal is to recover the Cranko
+# `release` commit. We assume that we are running on Linux.
+
+parameters:
+- name: setupGit
+  type: boolean
+  default: false
+
+steps:
+- download: current
+
+- checkout: self
+  submodules: true
+
+- bash: |
+    set -xeuo pipefail
+    git switch -c release
+    git pull --ff-only $(Pipeline.Workspace)/git-release/release.bundle
+    git show
+  displayName: Restore release commit
+
+- bash: |
+    set -euo pipefail
+    d="$(mktemp -d /tmp/cranko.XXXXXX)"
+    cd "$d"
+    curl --proto '=https' --tlsv1.2 -sSf https://pkgw.github.io/cranko/fetch-latest.sh | sh
+    echo "##vso[task.prependpath]$d"
+  displayName: Install latest Cranko
+
+- ${{ if parameters.setupGit }}:
+  - bash: |
+      set -xeuo pipefail
+      cranko github install-credential-helper
+      git config --global user.email "notifications@github.com"
+      git config --global user.name "Tectonic CI"
+    displayName: Set up Git actions
+    env:
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
