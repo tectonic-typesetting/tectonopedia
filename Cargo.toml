@@ -31,3 +31,7 @@ external-harfbuzz = ["tectonic/external-harfbuzz"]
 geturl-curl = ["tectonic/geturl-curl"]
 geturl-reqwest = ["tectonic/geturl-reqwest"]
 native-tls-vendored = ["tectonic/native-tls-vendored"]
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+branch = "master"
