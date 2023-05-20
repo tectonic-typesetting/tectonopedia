@@ -302,6 +302,7 @@ pub trait TexOperation: Send {
 
 pub fn process_inputs<'a, P: TexProcessor>(
     inputs: impl IntoIterator<Item = &'a RuntimeEntityIdent>,
+    n_workers: usize,
     proc: &mut P,
     cache: &mut Cache,
     indices: &mut IndexCollection,
@@ -312,7 +313,6 @@ pub fn process_inputs<'a, P: TexProcessor>(
         ["cannot obtain the path to the current executable"]
     );
 
-    let n_workers = 8; // !! make generic
     let pool = ThreadPool::new(n_workers);
 
     let (tx, rx) = channel();

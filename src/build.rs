@@ -37,6 +37,7 @@ use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pas
 /// list may be empty if nothing actually changed, or if the argument is false.
 /// This list is used in "watch" mode to efficiently update Parcel.js.
 fn primary_build_implementation(
+    n_workers: usize,
     collect_paths: bool,
     terse_output: bool,
     status: &mut dyn StatusBackend,
@@ -66,8 +67,14 @@ fn primary_build_implementation(
     // First TeX pass of indexing and gathering font/asset information.
 
     let mut p1r = pass1::Pass1Processor::default();
-    let n_processed =
-        tex_pass::process_inputs(&inputs, &mut p1r, &mut cache, &mut indices, status)?;
+    let n_processed = tex_pass::process_inputs(
+        &inputs,
+        n_workers,
+        &mut p1r,
+        &mut cache,
+        &mut indices,
+        status,
+    )?;
 
     if terse_output {
         print!("pass1");
@@ -122,7 +129,14 @@ fn primary_build_implementation(
     // TeX pass 2, emitting
 
     let mut p2r = pass2::Pass2Processor::new(metadata_ids, merged_assets_id, &indices)?;
-    tex_pass::process_inputs(&inputs, &mut p2r, &mut cache, &mut indices, status)?;
+    tex_pass::process_inputs(
+        &inputs,
+        n_workers,
+        &mut p2r,
+        &mut cache,
+        &mut indices,
+        status,
+    )?;
     let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
 
     if terse_output {
@@ -187,6 +201,7 @@ fn primary_build_implementation(
 }
 
 fn build_through_index(
+    n_workers: usize,
     do_rename: bool,
     collect_paths: bool,
     terse_output: bool,
@@ -234,7 +249,8 @@ fn build_through_index(
 
     // Main build.
 
-    let modified_files = primary_build_implementation(collect_paths, terse_output, status)?;
+    let modified_files =
+        primary_build_implementation(n_workers, collect_paths, terse_output, status)?;
 
     if !terse_output {
         tt_note!(
@@ -267,15 +283,21 @@ fn build_through_index(
 /// The standalone build operation.
 #[derive(Args, Debug)]
 pub struct BuildArgs {
-    #[arg(long)]
-    sample: Option<String>,
+    #[arg(long, short = 'j', default_value_t = 0)]
+    parallel: usize,
 }
 
 impl BuildArgs {
     /// In the "build" op, we do the main build, then just cap it off with a
     /// `yarn build` and we're done.
     pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
-        let (t0, _) = build_through_index(true, false, false, status)?;
+        let n_workers = if self.parallel > 0 {
+            self.parallel
+        } else {
+            num_cpus::get()
+        };
+
+        let (t0, _) = build_through_index(n_workers, true, false, false, status)?;
 
         atry!(
             yarn::yarn_build(status);
@@ -293,7 +315,10 @@ impl BuildArgs {
 
 /// The watch operation.
 #[derive(Args, Debug)]
-pub struct WatchArgs {}
+pub struct WatchArgs {
+    #[arg(long, short = 'j', default_value_t = 0)]
+    parallel: usize,
+}
 
 impl WatchArgs {
     /// This function is special since it takes ownership of the status backend,
@@ -303,6 +328,7 @@ impl WatchArgs {
         // build.
 
         let mut watcher = Watcher {
+            parallel: self.parallel,
             status,
             last_succeeded: true,
         };
@@ -348,6 +374,7 @@ impl WatchArgs {
 }
 
 struct Watcher {
+    parallel: usize,
     status: Box<dyn StatusBackend + Send>,
     last_succeeded: bool,
 }
@@ -382,8 +409,15 @@ impl Watcher {
     fn build_inner(&mut self) -> Result<()> {
         let status = self.status.as_mut();
 
+        let n_workers = if self.parallel > 0 {
+            self.parallel
+        } else {
+            num_cpus::get()
+        };
+
         println!();
-        let (t0, changed) = build_through_index(self.last_succeeded, true, true, status)?;
+        let (t0, changed) =
+            build_through_index(n_workers, self.last_succeeded, true, true, status)?;
         println!(" ... {:.1} seconds elapsed\n\n", t0.elapsed().as_secs_f32());
 
         // Touch the modified files; Parcel's change-detection code doesn't
