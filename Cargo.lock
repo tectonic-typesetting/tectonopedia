@@ -2795,6 +2795,7 @@ dependencies = [
  "filetime",
  "generic-array",
  "notify-debouncer-mini",
+ "num_cpus",
  "serde",
  "sha2",
  "string-interner",
