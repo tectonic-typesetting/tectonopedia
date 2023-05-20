@@ -11,6 +11,6 @@
     }
   },
   "overrideCommand": false,
-  "postCreateCommand": "yarn install && cargo build --release --features=external-harfbuzz",
+  "postCreateCommand": "yarn install && cargo build --release --features=external-harfbuzz && cargo run --release --features=external-harfbuzz -- build -j 1",
   "postStartCommand": "nohup bash -c 'cargo run --release --features=external-harfbuzz -- watch &'"
 }
