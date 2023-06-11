@@ -1,0 +1,181 @@
+\entry{tduxAddTemplate}{\string\tduxAddTemplate}{\tduxAddTemplate}
+\DeclareTerm*{\string\tduxAddTemplate}{@BtduxAddTemplate}
+
+The Tectonopedia command \b{\string\tduxAddTemplate} registers an HTML template
+to be included in the Tera templating session.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tduxAddTemplate{TMPL-FILENAME}
+\end{texdisp}
+
+Here, \tex`TMPL-FILENAME` is a \TeX\ path to a Tera HTML template file.
+
+\section*{Example}
+
+\begin{texdisp}
+\tduxAddTemplate{template.html}
+\end{texdisp}
+
+\section*{Remarks}
+
+Templates can only be added before the first call to \`@BtduxEmit`. Template
+names used here should correspond to the arguments given to
+\`@BtduxSetupOutput`.
+
+This command inserts a \tex`tdux:addTemplate` special.
+
+\tduxEmit
+
+
+\entry{tduxSetupOutput}{\string\tduxSetupOutput}{\tduxSetupOutput}
+\DeclareTerm*{\string\tduxSetupOutput}{@BtduxSetupOutput}
+
+The Tectonopedia command \b{\string\tduxSetupOutput} sets up the parameters of
+the next output file.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tduxSetupOutput{TMPL-FILENAME}{OUTPUT-PATH}
+\end{texdisp}
+
+Here, \tex`TMPL-FILENAME` is the name of the HTML template to use. This must
+have previously been registered using \`@BtduxAddTemplate`. \tex`OUTPUT-PATH` is
+the path at which the output file will be created.
+
+\section*{Example}
+
+\begin{texdisp}
+\tduxSetupOutput{template.html}{e/tduxSetupOutput/index.html}
+\end{texdisp}
+
+This would specify that the next output file will be created at the path
+\tex`e/tduxSetupOutput/index.html`, using \tex`template.html` as the template.
+
+\section*{Remarks}
+
+Note that output files created through the Tectonic HTML system are created
+directly on disk, and do not go through Tectonic’s virtualized I/O subsystem.
+
+\tduxEmit
+
+
+\entry{tduxEmit}{\string\tduxEmit}{\tduxEmit}
+\DeclareTerm*{\string\tduxEmit}{@BtduxEmit}
+
+The Tectonopedia command \b{\string\tduxEmit} causes the accumulated HTML
+content to be emitted to disk, and then resets the emission state.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tduxEmit
+\end{texdisp}
+
+\section*{Example}
+
+\begin{texdisp}
+\tduxAddTemplate{template.html}
+
+This is my about page!
+\tduxSetupOutput{template.html}{pages/about/index.html}
+\tduxEmit
+
+\tduxSetupOutput{template.html}{pages/contact/index.html}
+This is my contact page!
+\tduxEmit
+\end{texdisp}
+
+This example creates two HTML outputs, \tex`pages/about/index.html` and
+\tex`pages/contact/index.html`. Both use the template file \tex`template.html`.
+
+\section*{Remarks}
+
+The template to use must have previously been registered using
+\`@BtduxAddTemplate`.
+
+The directory structure needed to create the output path will be created if
+needed. For instance, in the example above, the directories \tex`pages`,
+\tex`pages/about`, and \tex`pages/contact` will be created if needed. Absolute
+paths or relative paths that attempt to escape the HTML output toplevel are
+illegal.
+
+\tduxEmit
+
+
+\entry{tduxSetTemplateVariable}{\string\tduxSetTemplateVariable}{\tduxSetTemplateVariable}
+\DeclareTerm*{\string\tduxSetTemplateVariable}{@BtduxSetTemplateVariable}
+
+The Tectonopedia command \b{\string\tduxSetTemplateVariable} assigns a value to
+a variable, which can be used during the Tera templating process that creates
+HTML output files. The value will persist until it is changed.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tduxSetTemplateVariable{NAME}{VALUE}
+\end{texdisp}
+
+The variable name \tex`NAME` may not contain whitespace.
+
+\section*{Remarks}
+
+Whether the variable contents are HTML-escaped is decided in the template,
+through use of the Tera \tex`safe` directive.
+
+\tduxEmit
+
+
+\entry{tduxProvideFile}{\string\tduxProvideFile}{\tduxProvideFile}
+\DeclareTerm*{\string\tduxProvideFile}{@BtduxProvideFile}
+
+The Tectonopedia command \b{\string\tduxProvideFile} causes a source file to be
+copied directly into the HTML output tree. This could be used, for instance, to
+provide an image file.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tduxProvideFile{SOURCE-PATH}{DEST-PATH}
+\end{texdisp}
+
+Here, \tex`SOURCE-PATH` is the \TeX\ path of a source file, and \tex`DEST-PATH`
+is the path of the file to be created in the output tree. \tex`SOURCE-PATH` may
+not contain whitespace.
+
+\section*{Remarks}
+
+If the destination path contains directory separators, output directories are
+created as needed.
+
+\tduxEmit
+
+
+\entry{tduxProvideSpecial}{\string\tduxProvideSpecial}{\tduxProvideSpecial}
+\DeclareTerm*{\string\tduxProvideSpecial}{@BtduxProvideSpecial}
+
+The Tectonopedia command \b{\string\tduxProvideSpecial} causes one or more
+special, internally-generated output files to be created in an HTML output tree.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tduxProvideSpecial{KIND}{DEST-PATH}
+\end{texdisp}
+
+Here, \tex`KIND` is the kind of special output to create. Currently the only
+supported value is \tex`font-css`.
+
+\section*{Example}
+
+\begin{texdisp}
+\tduxProvideSpecial{font-css}{tdux-fonts.css}
+\end{texdisp}
+
+\section*{Remarks}
+
+Using the \tex`font-css` “kind” causes the specified output file to be filled
+with CSS code that declares information about all of the fonts used during the
+\TeX\ processing stage, including special variant files created implicitly.
