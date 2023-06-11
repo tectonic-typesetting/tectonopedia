@@ -7,6 +7,13 @@ typesetting language.
 
 ## Quick Start
 
+To set up and launch the webserver locally in “watch” mode:
+
+```sh
+yarn install
+cargo run --release -- watch
+```
+
 The key directories for editing the encyclopedia are:
 
 - `cls`: shared TeX support files
