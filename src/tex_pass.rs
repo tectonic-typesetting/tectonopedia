@@ -261,7 +261,7 @@ pub trait TexProcessor {
     ///
     /// This function is called in the main thread. The information will be used
     /// to determine whether this particular job needs to be rerun. If so, a worker
-    /// will be created and will take ownership of the info
+    /// will be created and will take ownership of the info.
     fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,
@@ -281,7 +281,7 @@ pub trait TexProcessor {
 
     /// Accumulate information about an operation.
     ///
-    /// This function is called on the main thread with a [`Self::OpInfo`]
+    /// This function is called on the main thread with a [`WorkerDriver::OpInfo`]
     /// value. The value may or may not have been passed through a
     /// [`Self::Worker`], depending on whether the cache indicated that the
     /// operation actually needed to be rerun or not.

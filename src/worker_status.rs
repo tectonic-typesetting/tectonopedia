@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //! Termcolor-based status reporting with context for the TeX workers. This is a
-//! duplicte of Tectonic's WorkerStatusBackend with a hack to indicate which
+//! duplicate of Tectonic's WorkerStatusBackend with a hack to indicate which
 //! worker is reporting.
 
 use std::{fmt::Arguments, io::Write};
