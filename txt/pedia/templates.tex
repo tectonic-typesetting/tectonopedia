@@ -1,0 +1,46 @@
+\entry{pediaTitle}{\string\pediaTitle}{\pediaTitle}
+\DeclareTerm*{\string\pediaTitle}{@BpediaTitle}
+
+The Tectonopedia command \b{\string\pediaTitle} renders a page title
+
+\section*{Usage}
+
+\begin{texdisp}
+\pediaTitle{TITLE}
+\end{texdisp}
+
+\section*{Example}
+
+\begin{texdisp}
+\pediaTitle{Divio Documentation System}
+\end{texdisp}
+
+\section*{Remarks}
+
+This command inserts its argument into the document, wrapped in a \tex`<div>`
+tag with the \tex`pedia-pagetitle` CSS class.
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pediaBookName}{pediaBookName}{pediaBookName}
+\DeclareTerm{pediaBookName}
+
+The template variable \b{pediaBookName} specifies the name of the “book” to
+which the current output page belongs.
+
+\section*{Example}
+
+\begin{texdisp}
+\tduxSetTemplateVariable{pediaBookName}{Tectonopedia: Explainers}
+\end{texdisp}
+
+\section*{Remarks}
+
+Pages within a Tectonopedia collection may be informally grouped into “books”.
+The value of this variable is used to fill in the header line that appears at
+the top of each output page.
+
+The built-in Tectonpedia commands will manage the value of this variable for
+you, so that you shouldn’t need to set it manually.

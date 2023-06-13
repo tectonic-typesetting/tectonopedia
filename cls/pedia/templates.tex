@@ -1,14 +1,11 @@
 % Copyright 2022-2023 the Tectonic Project
 % Licensed under the MIT License
 %
-% Our HTML output templates.
+% Our HTML output templates. Documentation in `../txt/pedia/templates.tex`.
 %
 \tduxAddTemplate{template.html}
-\tduxSetTemplateVariable{tduxDocumentTitle}{Set tduxDocumentTitle}
 \tduxSetTemplateVariable{pediaBookName}{Set pediaBookName}
 %
-% \pediaTitle{TEXT}
-%   Render a page title
 \newcommand{\pediaTitle}[1]{%
   {\Large\textbf{\special{tdux:mfs div^^JCpedia-pagetitle}#1\special{tdux:me div}}}%
 }
