@@ -1,0 +1,83 @@
+\entry{pedia_maybeVerbatimToks}{\string\pedia@maybeVerbatimToks}{\pedia@maybeVerbatimToks}
+\DeclareTerm*{\string\pedia@maybeVerbatimToks}{@Bpedia@@maybeVerbatimToks}
+
+The internal Tectonopedia command \b{\string\pedia@maybeVerbatimToks} references
+a token list used during Tectonopedia verbatim processing.
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pedia_makeActiveWhitespace}{\string\pedia@makeActiveWhitespace}{\pedia@makeActiveWhitespace}
+\DeclareTerm*{\string\pedia@makeActiveWhitespace}{@Bpedia@@makeActiveWhitespace}
+
+The internal Tectonopedia command \b{\string\pedia@makeActiveWhitespace} sets
+the category codes of whitespace be active.
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pedia_defineActiveWhitespace}{\string\pedia@defineActiveWhitespace}{\pedia@defineActiveWhitespace}
+\DeclareTerm*{\string\pedia@defineActiveWhitespace}{@Bpedia@@defineActiveWhitespace}
+
+The internal Tectonopedia command \b{\string\pedia@defineActiveWhitespace} sets
+active whitespace characters to expand to the \tex`\ ` command.
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pediaScanVerbatim}{\string\pediaScanVerbatim}{\pediaScanVerbatim}
+\DeclareTerm*{\string\pediaScanVerbatim}{@BpediaScanVerbatim}
+
+The internal Tectonopedia command \b{\string\pediaScanVerbatim} causes the
+immediately following balanced-braced text to be scanned in “verbatim” mode,
+with control sequences and other special characters not having their usual \TeX\
+meanings. The resulting list of character tokens is saved in the token list
+\`@Bpedia@@maybeVerbatimToks`.
+
+\section*{Example}
+
+\begin{texdisp}
+\pediaScanVerbatim{\hello$_$}
+\makeatletter
+\the\pedia@maybeVerbatimToks % expands to literal "\hello$_$"
+\makeatother
+\end{texdisp}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pediaPassOneVerbatim}{\string\pediaPassOneVerbatim}{\pediaPassOneVerbatim}
+\DeclareTerm*{\string\pediaPassOneVerbatim}{@BpediaPassOneVerbatim}
+
+The internal Tectonopedia command \b{\string\pediaPassOneVerbatim} causes the
+immediately following balanced-braced text to be scanned and saved in the token
+list \`@Bpedia@@maybeVerbatimToks`.
+
+On the first pass, the tokens are scanned in “verbatim” mode with
+\`@BpediaScanVerbatim`, so the control sequences and other special characters do
+not have their usual \TeX\ meaning. On the second pass, the text is scanned
+without any special affordances, so control sequences and special characters are
+handled normally.
+
+\section*{Example}
+
+\begin{texdisp}
+\pediaPassOneVerbatim{6563 \AA}
+\makeatletter
+In pass one, the following will expand to a literal "6564 \AA". In pass
+two, it will expand to "6563 Å".
+\the\pedia@maybeVerbatimToks
+\makeatother
+\end{texdisp}
+
+\section*{Remarks}
+
+This command is needed for certain indexing operations. In the first pass, it is
+necessary to extract verbatim \TeX\ sequences to index the marked-up textual
+representations of various items. In the second pass, it is no longer necessary
+to save the indexing information, and instead we need to actually show the
+marked-up content.
