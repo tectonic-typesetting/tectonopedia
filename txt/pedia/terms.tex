@@ -1,0 +1,80 @@
+\entry{DeclareTerm}{\string\DeclareTerm}{\DeclareTerm}
+\DeclareTerm*{\string\DeclareTerm}{@BDeclareTerm}
+
+The Tectonopedia command \b{\string\DeclareTerm} declares a “term” usable for
+wiki-style linking within a Tectonopedia collection.
+
+\section*{Usage}
+
+\begin{texdisp}
+\DeclareTerm{TERM}
+\DeclareTerm*{TEX-TERM}{PLAIN-TERM}
+\end{texdisp}
+
+The unstarred form of this command declares a term whose contents do not include
+any special \TeX\ characters. The starred form must be used when the desired
+typesetting of the term includes characters that have special meanings to the
+\TeX\ language.
+
+\section*{Example}
+
+\begin{texdisp}
+\DeclareTerm{gardening}
+\DeclareTerm{\string\href}{@Bhref}
+
+Many people enjoy \`gardening`.
+\end{texdisp}
+
+\section*{Remarks}
+
+This command declares an entry in the \tex`terms` index whose name is the plain
+form of the term value. The location associated with the index entry is the
+current location at the time of the term’s definition.
+
+This command does not expand to any text in the output document.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \`@B@T` — to link to a term defined using this command
+\end{itemize}
+
+
+\tduxEmit % ===================================================================
+
+% backticks in the second argument here seem to cause serious parser issues!
+% something to investigate.
+\entry{(backtick)}{\char92\char96}{\`}
+\DeclareTerm*{\string\`}{@B@T}
+
+The Tectonopedia command \b{\string\`} (a single-letter control sequence
+associated with a backtick) links to a term using wiki-style linking.
+
+\section*{Usage}
+
+\begin{texdisp}
+\`TERM`
+\end{texdisp}
+
+The command has a special syntax. Its argument is terminated by the first
+backtick character encountered by the \TeX\ parser after reading in the command.
+The argument should be the “plain” textualization of a term declared using
+\`@BDeclareTerm`.
+
+\section*{Example}
+
+\begin{texdisp}
+\DeclareTerm{bicycling}
+
+Some people enjoy \`bicycling`.
+\end{texdisp}
+
+\section*{Remarks}
+
+This command expands to the \TeX\ marked-up form of the referenced term.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \`@BDeclareTerm` — to manually define a term for linking
+\end{itemize}
