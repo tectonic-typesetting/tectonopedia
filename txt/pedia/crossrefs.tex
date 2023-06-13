@@ -1,0 +1,119 @@
+\entry{pediaLogRef}{\string\pediaLogRef}{\pediaLogRef}
+\DeclareTerm*{\string\pediaLogRef}{@BpediaLogRef}
+
+The internal Tectonopedia command \b{\string\pediaLogRef} logs a reference to an
+index entry. These references are gathered during the first pass through the
+inputs and validated during the cross-referencing stage. During the second pass
+through the inputs, information about the referenced items will be made
+available by the Tectonopedia driver.
+
+\section*{Usage}
+
+\begin{texdisp}
+\pediaLogRef{INDEX}{ENTRY}{FLAGS}
+\end{texdisp}
+
+This logs a reference to the entry \tex`ENTRY` found in the specified index
+\tex`INDEX`. The \tex`FLAGS` are characters indicating which kinds of
+information about the entry are required.
+
+\section*{Example}
+
+\begin{texdisp}
+\pediaLogRef{entry}{href}{l}
+\end{texdisp}
+
+\section*{Remarks}
+
+This command does not expand to any text in the document.
+
+The allowed flags are as follows:
+
+% TODO definition list
+\begin{itemize}
+\item \tex`l` — the reference entry must have its location defined; the
+    location is the URL at which the entry is found
+\item \tex`t` — the reference entry must have its text defined; the text
+    is a textual representation of the entry's name or identity
+\end{itemize}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pediaEnsureRefCS}{\string\pediaEnsureRefCS}{\pediaEnsureRefCS}
+\DeclareTerm*{\string\pediaEnsureRefCS}{@BpediaEnsureRefCS}
+
+The internal Tectonopedia command \b{\string\pediaEnsureRefCS} ensures that a
+desired internal cross-referencing control sequence is defined. It is used to
+ease compilation during the first pass through the inputs.
+
+\section*{Usage}
+
+\begin{texdisp}
+\pediaEnsureRefCS{INDEX}{ENTRY}{DATATYPE}
+\end{texdisp}
+
+This ensures that there exists a control sequence whose name is
+\tex`pedia resolve**INDEX**ENTRY**DATATYPE`, substituting in the arguments.
+If this control sequence was not previously defined, it is defined to
+expand to a question-mark character.
+
+\section*{Example}
+
+\begin{texdisp}
+\pediaEnsureRefCS{entry}{href}{loc}
+% Ensures that `\csname pedia resolve**entry**href**loc\endcsname` is defined
+\end{texdisp}
+
+\section*{Remarks}
+
+This command does not expand to any text in the document itself.
+
+During the first pass of Tectonopedia processing, cross-references haven't yet
+been scanned, and none of the special control sequences used by this command are
+expected to be defined. During the second pass, if the proper calls to
+\`@BpediaLogRef` have been made, the relevant control sequences should have been
+provided by the driver, and calls to this command should be effectively no-ops.
+
+Standard \tex`DATATYPE` values include:
+
+% TODO definition list
+\begin{itemize}
+\item \tex`loc` — for cross-references to entry locations (URLs)
+\item \tex`text tex` — for cross-references to entry text in marked-up
+    \TeX\ format
+\item \tex`text plain` — for cross-references to entry text in
+    plain Unicode
+\end{itemize}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{pediaLinkRef}{\string\pediaLinkRef}{\pediaLinkRef}
+\DeclareTerm*{\string\pediaLinkRef}{@BpediaLinkRef}
+
+The Tectonopedia command \b{\string\pediaLinkRef} creates a hyperlink to an
+entry in an index.
+
+\section*{Usage}
+
+\begin{texdisp}
+\pediaLinkRef{INDEX}{ENTRY}
+\end{texdisp}
+
+This inserts an internal link whose text is the \TeX\ markup associated with
+the named entry, and whose URL is its location.
+
+\section*{Example}
+
+\begin{texdisp}
+For more information, see the \pediaLinkRef{entry}{href} page.
+\end{texdisp}
+
+\section*{Remarks}
+
+This command expands to an \`@BhrefInternal` command whose URL and text are
+derived from the indexing information associated with the named entry.
+
