@@ -1,0 +1,72 @@
+\entry{href}{\string\href}{\href}
+\DeclareTerm*{\string\href}{@Bhref}
+
+The Tectonopedia command \b{\string\href} creates a hyperlink. It is intended to
+be used for outgoing links that take the use away from the current document.
+
+\section*{Usage}
+
+\begin{texdisp}
+\href{URL}{TEXT}
+\end{texdisp}
+
+This inserts the text \tex`TEXT` with a hyperlink to the web address \tex`URL`.
+
+\section*{Example}
+
+\begin{texdisp}
+Scientific article preprints may be found on \href{https://arxiv.org}{the Ar$\chi$iv}.
+\end{texdisp}
+
+\section*{Remarks}
+
+In Tectonopedia, this command simply inserts an \tex`<a>` HTML tag. It overrides
+the command of the same name provided by hyperref.
+
+The tag inserted by this command includes an attribute \tex`target="_blank"`,
+causing the link to be opened in a new browser window or tab. The alternative
+command \`@BhrefInternal` omits this.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \`@BhrefInternal`, which does not include the \tex`target="_blank"` attribute.
+\end{itemize}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{hrefInternal}{\string\hrefInternal}{\hrefInternal}
+\DeclareTerm*{\string\hrefInternal}{@BhrefInternal}
+
+The Tectonopedia command \b{\string\hrefInternal} creates a hyperlink. It is
+intended to be used for links internal to the current document.
+
+\section*{Usage}
+
+\begin{texdisp}
+\hrefInternal{URL}{TEXT}
+\end{texdisp}
+
+This inserts the text \tex`TEXT` with a hyperlink to the web address \tex`URL`.
+
+\section*{Example}
+
+\begin{texdisp}
+For more information, see \hrefInternal{../about/}{the About page}.
+\end{texdisp}
+
+\section*{Remarks}
+
+The tag inserted by this command does not include any HTML attributes besides
+\tex`href`. The alternative command \`@Bhref` is intended for outgoing
+hyperlinks; it includes a \tex`target="_blank"` attribute as well, causing the
+link to be opened in a new browser window or tab.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \`@Bhref`, intended for use with outgoing hyperlinks
+\end{itemize}
+

@@ -1,20 +1,16 @@
 % Copyright 2022-2023 the Tectonic Project
 % Licensed under the MIT License
 %
-% Creating hyperlinks.
+% Creating hyperlinks. Documentation in `../txt/pedia/links.tex`
 %
 \RequirePackage{hyperref}
 %
-% \href{URL}{TEXT}
-%  This builds in a `target="_blank"` setting.
 \renewcommand{\href}[2]{%
   \special{tdux:mfs a^^J%
 Dtarget _blank^^J%
 Dhref #1}#2\special{tdux:me a}%
 }
 %
-% \hrefInternal{URL}{TEXT}
-%  Like \href, but without the "_blank" target.
 \newcommand{\hrefInternal}[2]{%
   \special{tdux:mfs a^^J%
 Dhref #1}#2\special{tdux:me a}%
