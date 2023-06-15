@@ -1,0 +1,69 @@
+\entry{entry-command}{\string\entry}{\entry}
+\DeclareTerm*{\string\entry}{@Bentry}
+
+The Tectonopedia command \b{\string\entry} is used to declare a new output
+representing an entry in the reference section of the collection.
+
+\section*{Usage}
+
+\begin{texdisp}
+\entry{SLUG}{TEX-TITLE}{PLAIN-TITLE}
+\end{texdisp}
+
+The \tex`SLUG` is the unique URL path to this entry. The entry will be located
+at the path \tex`/e/{SLUG}`. Every entry's slug must be unique.
+
+The \tex`TEX-TITLE` is the title to be used for the entry, including
+\TeX/\LaTeX\ markup. This title will appear at the top of the resulting output
+page.
+
+The \tex`PLAIN-TITLE` is the entry title in plain Unicode, without any
+\TeX/\LaTeX\ markup. It is parsed in verbatim mode, so that control sequences
+and other special characters do not have their usual \TeX\ meanings. It will be
+used in places such as metadata records where \TeX/\LaTeX\ typesetting cannot be
+used.
+
+\section*{Example}
+
+\begin{texdisp}
+\entry{tduxAddTemplate}{\string\tduxAddTemplate}{\tduxAddTemplate}
+
+The Tectonopedia command \b{\string\tduxAddTemplate} registers an HTML template ...
+\end{texdisp}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{e}{\string\e}{\e}
+\DeclareTerm{@Be}
+
+The Tectonopedia \b{\string\e} command creates a link to the specified
+encyclopedia reference entry.
+
+\section*{Usage}
+
+\begin{texdisp}
+\e{SLUG}
+\end{texdisp}
+
+The \tex`SLUG` is the slug of the entry to reference.
+
+In the output, this command expands to a hyperlink to the specified entry whose
+text is the entry title.
+
+\section*{Example}
+
+\begin{texdisp}
+The Tectonopedia structure is influenced by the
+\e{divio-documentation-system} design.
+\end{texdisp}
+
+\section*{Remarks}
+
+In many cases, it may be more natural to use wiki-style linking using the
+\`@BDeclareTerm` and \`@B@T` commands. In effect, wiki-style links offer better
+control over the link text that appears in the output document. When referencing
+an entry with \tex`\e`, the link text will always be the entry title. With
+wiki-style linking, on the other hand, you can achieve similar levels of
+convenience with more flexibility.

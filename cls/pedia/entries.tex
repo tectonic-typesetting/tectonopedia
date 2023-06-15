@@ -1,13 +1,9 @@
 % Copyright 2022-2023 the Tectonic Project
 % Licensed under the MIT License
 %
-% Encyclopedia "entries": individual reference items.
+% Encyclopedia "entries": individual reference items. Documentation in
+% `~/txt/pedia/entries.tex`.
 %
-% \entry{SLUG}{TEX-TITLE}{PLAIN-TITLE}
-%  Define an entry
-%
-%  Because the entry titles need to be parsed as verbatim code for
-%  indexing, the actual implementation of this command is split.
 \makeatletter
 \newtoks\pedia@titletmp
 %
@@ -45,8 +41,6 @@
 }
 \makeatother
 %
-% \e{ENTRY}
-%  Create an internal link to the specified encyclopedia entry.
 \newcommand{\e}[1]{%
   \pediaLinkRef{entries}{#1}%
 }
