@@ -1,16 +1,11 @@
 % Copyright 2022-2023 the Tectonic Project
 % Licensed under the MIT License
 %
-% TeX code examples. One day we'll have syntax highlighting, cross-referencing,
+% TeX code examples. Documentation in `~/txt/pedia/tex_code.tex`.
+%
+% One day we'll have syntax highlighting, cross-referencing,
 % and all sorts of good stuff ... but not yet.
 %
-% \tex renders inline TeX code processed in a "verbatim"
-%   mode. Right now it's just an alias for the fancyvrb
-%   \Verb command, but we want a separate command that
-%   specifically indicates that its contents are TeX
-%   because in the future we might include syntax
-%   highlighting, hyperlinking, etc.
 \let\tex=\Verb
-
-% Maybe we'll customize this eventually?
+%
 \DefineVerbatimEnvironment{texdisp}{Verbatim}{}

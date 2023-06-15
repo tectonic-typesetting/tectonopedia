@@ -1,0 +1,87 @@
+\entry{tex}{\string\tex}{\tex}
+\DeclareTerm*{\string\tex}{@Btex}
+
+The Tectonopedia command \b{\string\tex} is used to render \TeX/\LaTeX\ code
+that appears inline in body text.
+
+\section*{Usage}
+
+\begin{texdisp}
+\tex`TEX-CODE`
+\end{texdisp}
+
+The \tex`TEX-CODE` is scanned in verbatim mode, so that any control sequences or
+other characters special to \TeX\ do not have their usual effects.
+
+Any character may follow the \tex`\tex` control sequence; the following tokens
+are scanned in verbatim mode until the next occurrence of the delimiter
+character. In Tectonopedia, the standard choice for the delimiter is the
+backtick character (`).
+
+In the output, the \tex`TEX-CODE` is rendered in a monospace font.
+
+\section*{Example}
+
+\begin{texdisp}
+To create bold text in the Tectonopedia, write \tex`\b{text}`.
+\end{texdisp}
+
+\section*{Remarks}
+
+This command is currently implemented with the \tex`\Verb` control sequence from
+the \tex`fancyvrb`. In the future, this command may add features such as syntax
+highlighting.
+
+\section*{See Also}
+
+\begin{itemize}
+\item The \`texdisp` environment — for display-style \TeX/\LaTeX\ code
+\end{itemize}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{texdisp}{texdisp}{texdisp}
+\DeclareTerm{texdisp}
+
+The \b{texdisp} environment provided by Tectonopedia is used to render
+\TeX/\LaTeX\ code in a display format.
+
+\section*{Usage}
+
+% I presume that we can't nest texdisp environments, so use Verbatim ...
+\begin{Verbatim}
+\begin{texdisp}
+VERBATIM-DISPLAY-CONTENT
+\end{texdisp}
+\end{Verbatim}
+
+The \tex`VERBATIM-DISPLAY-CONTENT` is scanned in verbatim mode, so that any
+control sequences or other characters special to \TeX\ do not have their usual
+effects.
+
+In the output, the verbatim display content is rendered in a monospace font and
+in a display presentation.
+
+\section*{Example}
+
+\begin{Verbatim}
+To declare a new term for wiki-style linking, write:
+
+\begin{texdisp}
+\DeclareTerm{my term}
+\end{texdisp}
+\end{Verbatim}
+    
+\section*{Remarks}
+
+This environment is equivalent to the \tex`Verbatim` environment provided by the
+\tex`fancyvrb` package. In the future, it command may add features such as
+syntax highlighting.
+
+\section*{See Also}
+
+\begin{itemize}
+\item \`@Btex` — for inlne \TeX/\LaTeX\ code
+\end{itemize}
