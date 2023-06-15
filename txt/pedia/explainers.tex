@@ -1,0 +1,59 @@
+\entry{Explainer}{\string\Explainer}{\Explainer}
+\DeclareTerm*{\string\Explainer}{@BExplainer}
+
+The Tectonopedia command \b{\string\Explainer} is used to declare a new output
+representing an “explainer” document.
+
+\section*{Usage}
+
+\begin{texdisp}
+\Explainer{SLUG}{TEX-TITLE}{PLAIN-TITLE}
+\end{texdisp}
+
+The \tex`SLUG` is the unique URL path to this explainer. The explainer will be
+located at the path \tex`/explain/{SLUG}`. Every explainer's slug must be unique.
+
+The \tex`TEX-TITLE` is the title to be used for the explainer, including
+\TeX/\LaTeX\ markup. This title will appear at the top of the resulting output
+page.
+
+The \tex`PLAIN-TITLE` is the explainer title in plain Unicode, without any
+\TeX/\LaTeX\ markup. It is parsed in verbatim mode, so that control sequences
+and other special characters do not have their usual \TeX\ meanings. It will be
+used in places such as metadata records where \TeX/\LaTeX\ typesetting cannot be
+used.
+
+\section*{Example}
+
+\begin{texdisp}
+\explainer{why-tex}{Why \TeX?}{Why TeX?}
+
+Technology has come a long way since the 1970's ...
+\end{texdisp}
+
+
+\tduxEmit % ===================================================================
+
+
+\entry{explain}{\string\explain}{\explain}
+\DeclareTerm{@Bexplain}
+
+The Tectonopedia \b{\string\explain} command creates a link to the specified
+explainer page.
+
+\section*{Usage}
+
+\begin{texdisp}
+\explain{SLUG}
+\end{texdisp}
+
+The \tex`SLUG` is the slug of the explainer to reference.
+
+In the output, this command expands to a hyperlink to the specified explainer whose
+text is the entry title.
+
+\section*{Example}
+
+\begin{texdisp}
+For more justification, see the \explain{why-tex} page.
+\end{texdisp}
