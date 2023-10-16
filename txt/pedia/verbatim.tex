@@ -5,9 +5,6 @@ The internal Tectonopedia command \b{\string\pedia@maybeVerbatimToks} references
 a token list used during Tectonopedia verbatim processing.
 
 
-\tduxEmit % ===================================================================
-
-
 \Entry{pedia_makeActiveWhitespace}{\string\pedia@makeActiveWhitespace}{\pedia@makeActiveWhitespace}
 \DeclareTerm*{\string\pedia@makeActiveWhitespace}{@Bpedia@@makeActiveWhitespace}
 
@@ -15,17 +12,11 @@ The internal Tectonopedia command \b{\string\pedia@makeActiveWhitespace} sets
 the category codes of whitespace be active.
 
 
-\tduxEmit % ===================================================================
-
-
 \Entry{pedia_defineActiveWhitespace}{\string\pedia@defineActiveWhitespace}{\pedia@defineActiveWhitespace}
 \DeclareTerm*{\string\pedia@defineActiveWhitespace}{@Bpedia@@defineActiveWhitespace}
 
 The internal Tectonopedia command \b{\string\pedia@defineActiveWhitespace} sets
 active whitespace characters to expand to the \tex`\ ` command.
-
-
-\tduxEmit % ===================================================================
 
 
 \Entry{pediaScanVerbatim}{\string\pediaScanVerbatim}{\pediaScanVerbatim}
@@ -45,9 +36,6 @@ meanings. The resulting list of character tokens is saved in the token list
 \the\pedia@maybeVerbatimToks % expands to literal "\hello$_$"
 \makeatother
 \end{texdisp}
-
-
-\tduxEmit % ===================================================================
 
 
 \Entry{pediaPassOneVerbatim}{\string\pediaPassOneVerbatim}{\pediaPassOneVerbatim}

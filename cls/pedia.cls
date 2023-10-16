@@ -23,5 +23,6 @@
 \input{pedia/tex_code.tex}
 \input{pedia/sectioning.tex}
 \input{pedia/lists.tex}
+\input{pedia/outputs.tex}
 \input{pedia/entries.tex}
 \input{pedia/explainers.tex}

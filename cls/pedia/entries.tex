@@ -8,11 +8,15 @@
 \newtoks\pedia@titletmp
 %
 \newcommand{\Entry}[1]{%
+  % finish a previous output, if needed:
+  \pedia@maybeEmit
+
   % save the slug:
   \def\tmp@b{#1}%
 
   % This is the stuff we can do with just the slug:
   \tduxSetupOutput{template.html}{e/#1/index.html}
+  \@pedia@emitNeededtrue
   \def\pediaRelTop{../../}
   \immediate\write\pediaIndex{\string\output{e/#1/index.html}}
   \immediate\write\pediaIndex{\string\idef{entries}{#1}{}}

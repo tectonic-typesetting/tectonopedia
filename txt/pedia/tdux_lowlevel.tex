@@ -26,8 +26,6 @@ names used here should correspond to the arguments given to
 
 This command inserts a \tex`tdux:addTemplate` special.
 
-\tduxEmit
-
 
 \Entry{tduxSetupOutput}{\string\tduxSetupOutput}{\tduxSetupOutput}
 \DeclareTerm*{\string\tduxSetupOutput}{@BtduxSetupOutput}
@@ -58,8 +56,6 @@ This would specify that the next output file will be created at the path
 
 Note that output files created through the Tectonic HTML system are created
 directly on disk, and do not go through Tectonic’s virtualized I/O subsystem.
-
-\tduxEmit
 
 
 \Entry{tduxEmit}{\string\tduxEmit}{\tduxEmit}
@@ -102,8 +98,6 @@ needed. For instance, in the example above, the directories \tex`pages`,
 paths or relative paths that attempt to escape the HTML output toplevel are
 illegal.
 
-\tduxEmit
-
 
 \Entry{tduxSetTemplateVariable}{\string\tduxSetTemplateVariable}{\tduxSetTemplateVariable}
 \DeclareTerm*{\string\tduxSetTemplateVariable}{@BtduxSetTemplateVariable}
@@ -124,8 +118,6 @@ The variable name \tex`NAME` may not contain whitespace.
 
 Whether the variable contents are HTML-escaped is decided in the template,
 through use of the Tera \tex`safe` directive.
-
-\tduxEmit
 
 
 \Entry{tduxProvideFile}{\string\tduxProvideFile}{\tduxProvideFile}
@@ -149,8 +141,6 @@ not contain whitespace.
 
 If the destination path contains directory separators, output directories are
 created as needed.
-
-\tduxEmit
 
 
 \Entry{tduxProvideSpecial}{\string\tduxProvideSpecial}{\tduxProvideSpecial}
