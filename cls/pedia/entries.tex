@@ -7,7 +7,7 @@
 \makeatletter
 \newtoks\pedia@titletmp
 %
-\newcommand{\entry}[1]{%
+\newcommand{\Entry}[1]{%
   % save the slug:
   \def\tmp@b{#1}%
 
@@ -17,19 +17,19 @@
   \immediate\write\pediaIndex{\string\output{e/#1/index.html}}
   \immediate\write\pediaIndex{\string\idef{entries}{#1}{}}
   % This parses the second argument (the TeX title), places it in
-  % \pedia@maybeVerbatimToks, and then evaluates \entry@tailA
-  \pediaPassOneVerbatim\entry@tailA
+  % \pedia@maybeVerbatimToks, and then evaluates \Entry@tailA
+  \pediaPassOneVerbatim\Entry@tailA
 }
-\newcommand{\entry@tailA}{%
+\newcommand{\Entry@tailA}{%
   % Render the entry title. On pass 1 it will have been parsed verbatim,
   % so any TeX constructs will appear literally. This is fine since we don't
   % actually use the pass 1 HTML!
   \pediaTitle{\the\pedia@maybeVerbatimToks}%
   %
   \pedia@titletmp=\pedia@maybeVerbatimToks
-  \pediaScanVerbatim\entry@tailB
+  \pediaScanVerbatim\Entry@tailB
 }
-\newcommand{\entry@tailB}{%
+\newcommand{\Entry@tailB}{%
   % The point of all of the verbatim gymnastics: we can emit the "text" of the
   % entry as the literal TeX code that the user provided, rather than whatever
   % that code expands to.
