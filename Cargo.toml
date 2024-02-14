@@ -9,10 +9,12 @@ clap = { version = "^4", features = ["derive"] }
 csv = "^1.2"
 digest = "0.10"
 filetime = "0.2"
+futures = { version = "0.3", default-features = false }
 generic-array = { version = "0.14", features = ["serde"] }
 notify-debouncer-mini = { version = "0.2", default-features = false }
 num_cpus = "^1.15"
 serde = { version = "^1.0", features = ["derive"] }
+serde_json = "^1.0"
 sha2 = "0.10"
 string-interner = "0.14"
 tectonic = "0.14"
@@ -23,8 +25,11 @@ tectonic_status_base = "0.2"
 tempfile = "^3.4"
 termcolor = "^1.1"
 threadpool = "^1.8"
+tokio = { version = "^1.36", features = ["macros", "sync", "rt-multi-thread"] }
+tokio-stream = "0.1"
 toml = "0.5"
 walkdir = "^2"
+warp = "0.3"
 
 [features]
 default = ["geturl-reqwest"]
