@@ -168,7 +168,7 @@ fn process_one_input<W: WorkerDriver>(
     // since it can only propagate a stateless flag as to whether a "specific"
     // or "general" error occurred; it can't propagate out detailed information.
 
-    let mut cmd = Command::new(&self_path);
+    let mut cmd = Command::new(self_path);
     driver.init_command(&mut cmd);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
