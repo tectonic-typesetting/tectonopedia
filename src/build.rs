@@ -315,7 +315,7 @@ impl BuildArgs {
 
 /// The watch operation.
 #[derive(Args, Debug)]
-pub struct WatchArgs {
+pub struct OldWatchArgs {
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
 
@@ -323,7 +323,7 @@ pub struct WatchArgs {
     debug_watch: bool,
 }
 
-impl WatchArgs {
+impl OldWatchArgs {
     /// This function is special since it takes ownership of the status backend,
     /// since we need to send it to another thread for steady-state operations.
     pub fn exec(self, status: Box<dyn StatusBackend + Send>) {

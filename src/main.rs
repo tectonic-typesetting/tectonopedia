@@ -21,6 +21,7 @@ mod pass2;
 mod tex_escape;
 #[macro_use]
 mod tex_pass;
+mod watch;
 mod worker_status;
 mod yarn;
 
@@ -57,14 +58,7 @@ impl ToplevelArgs {
             Action::Build(a) => a.exec(status.as_mut()),
             Action::FirstPassImpl(a) => a.exec(status.as_mut()),
             Action::SecondPassImpl(a) => a.exec(status.as_mut()),
-
-            // Here we jump through hoops so that `watch` can take ownership of
-            // the status backend; it runs forever and so doesn't need to join
-            // in the standard error-handling pattern.
-            Action::Watch(a) => {
-                a.exec(status);
-                return;
-            }
+            Action::Watch(a) => a.exec(status.as_mut()),
         };
 
         if let Err(e) = result {
@@ -79,5 +73,5 @@ enum Action {
     Build(build::BuildArgs),
     FirstPassImpl(pass1::FirstPassImplArgs),
     SecondPassImpl(pass2::SecondPassImplArgs),
-    Watch(build::WatchArgs),
+    Watch(watch::WatchArgs),
 }
