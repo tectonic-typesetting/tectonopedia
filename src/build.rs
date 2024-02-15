@@ -318,6 +318,9 @@ impl BuildArgs {
 pub struct WatchArgs {
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
+
+    #[arg(long)]
+    debug_watch: bool,
 }
 
 impl WatchArgs {
@@ -331,6 +334,7 @@ impl WatchArgs {
             parallel: self.parallel,
             status,
             last_succeeded: true,
+            debug: self.debug_watch,
         };
 
         watcher.build();
@@ -354,12 +358,23 @@ impl WatchArgs {
         // Now set up the debounced notifier that will handle things from here
         // on out.
 
+        if self.debug_watch {
+            println!("debug[watcher]: setting up debounced watcher at 300 ms");
+        }
+
         let mut debouncer = atry!(
             new_debouncer(Duration::from_millis(300), None, watcher);
             ["failed to set up filesystem change notifier"]
         );
 
         for dname in &["cls", "idx", "src", "txt", "web"] {
+            if self.debug_watch {
+                println!(
+                    "debug[watcher]: watching recursively: `{}`",
+                    Path::new(dname).display()
+                );
+            }
+
             atry!(
                 debouncer
                     .watcher()
@@ -377,10 +392,15 @@ struct Watcher {
     parallel: usize,
     status: Box<dyn StatusBackend + Send>,
     last_succeeded: bool,
+    debug: bool,
 }
 
 impl DebounceEventHandler for Watcher {
     fn handle_event(&mut self, event: DebounceEventResult) {
+        if self.debug {
+            println!("debug[watcher]: event: {:?}", event);
+        }
+
         if let Err(mut e) = event {
             tt_error!(
                 self.status.as_mut(),
@@ -415,6 +435,13 @@ impl Watcher {
             num_cpus::get()
         };
 
+        if self.debug {
+            println!(
+                "debug[watcher]: launch (n_workers={n_workers}, last_succeeded={})\n\n(parcel placeholder ...)",
+                self.last_succeeded
+            );
+        }
+
         println!();
         let (t0, changed) =
             build_through_index(n_workers, self.last_succeeded, true, true, status)?;
@@ -425,6 +452,10 @@ impl Watcher {
 
         for output in &changed {
             let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
+
+            if self.debug {
+                println!("debug[watcher]: touch `{p}`");
+            }
 
             atry!(
                 filetime::set_file_mtime(&p, filetime::FileTime::now());

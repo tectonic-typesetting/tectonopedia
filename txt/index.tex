@@ -1,6 +1,9 @@
 % The main landing page.
 
 \tduxSetupOutput{template.html}{index.html}
+\makeatletter
+\@pedia@emitNeededtrue
+\makeatother
 \immediate\write\pediaIndex{\string\output{index.html}}
 \def\pediaRelTop{./}
 \tduxSetTemplateVariable{pediaTitle}{Welcome}

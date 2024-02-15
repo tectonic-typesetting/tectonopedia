@@ -1,0 +1,20 @@
+\Entry{pedia@maybeEmit}{\string\pedia@maybeEmit}{\pedia@@maybeEmit}
+\DeclareTerm*{\string\pedia@maybeEmit}{@Bpedia@@maybeEmit}
+
+The internal Tectonopedia command \b{\string\pedia@maybeEmit} will cause a
+\`@BtduxEmit` command to happen if the conditional \`@Bif@@pedia@@emitNeeded` is
+true. It is intended to be used at the beginning of commands like \`@BEntry` to
+ensure that \`@BtduxEmit` is invoked between outputs.
+
+
+\Entry{if@pedia@emitNeeded}{\string\if@pedia@emitNeeded}{\if@pedia@emitNeeded}
+\DeclareTerm*{\string\if@pedia@emitNeeded}{@Bif@@pedia@@emitNeeded}
+
+A \TeX\ conditional indicating whether an output has been started, such that we
+should call \`@BtduxEmit` before starting a new output or before finishing
+processing the current file.
+
+As with standard \TeX\ conditional processing, the commands
+\tex`\@pedia@emitNeededtrue` and \tex`\@pedia@emitNeededfalse` are
+automatically defined to set the condition to true and false, respectively.
+

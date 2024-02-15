@@ -50,7 +50,7 @@ The Tectonopedia is created in three main stages:
 The command `tectonopedia watch`, runnable locally as `cargo run --release -- watch`,
 will both watch the TeX inputs and manage a Parcel.js development server,
 automatically rerunning all processing steps except for any recompilations
-of the `tectonpedia` program itself.
+of the `tectonopedia` program itself.
 
 Some key support directories in this end-to-end process are:
 

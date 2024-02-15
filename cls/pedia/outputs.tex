@@ -1,0 +1,17 @@
+% Copyright 2022-2023 the Tectonic Project
+% Licensed under the MIT License
+%
+% General support for various output files. Documentation in `~/txt/pedia/outputs.tex`.
+%
+\makeatletter
+%
+\newif\if@pedia@emitNeeded
+\@pedia@emitNeededfalse
+%
+\newcommand\pedia@maybeEmit{%
+  \if@pedia@emitNeeded
+    \tduxEmit
+  \fi
+}%
+%
+\makeatother

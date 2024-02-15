@@ -1,4 +1,4 @@
-\entry{tduxAddTemplate}{\string\tduxAddTemplate}{\tduxAddTemplate}
+\Entry{tduxAddTemplate}{\string\tduxAddTemplate}{\tduxAddTemplate}
 \DeclareTerm*{\string\tduxAddTemplate}{@BtduxAddTemplate}
 
 The Tectonopedia command \b{\string\tduxAddTemplate} registers an HTML template
@@ -26,10 +26,8 @@ names used here should correspond to the arguments given to
 
 This command inserts a \tex`tdux:addTemplate` special.
 
-\tduxEmit
 
-
-\entry{tduxSetupOutput}{\string\tduxSetupOutput}{\tduxSetupOutput}
+\Entry{tduxSetupOutput}{\string\tduxSetupOutput}{\tduxSetupOutput}
 \DeclareTerm*{\string\tduxSetupOutput}{@BtduxSetupOutput}
 
 The Tectonopedia command \b{\string\tduxSetupOutput} sets up the parameters of
@@ -59,10 +57,8 @@ This would specify that the next output file will be created at the path
 Note that output files created through the Tectonic HTML system are created
 directly on disk, and do not go through Tectonic’s virtualized I/O subsystem.
 
-\tduxEmit
 
-
-\entry{tduxEmit}{\string\tduxEmit}{\tduxEmit}
+\Entry{tduxEmit}{\string\tduxEmit}{\tduxEmit}
 \DeclareTerm*{\string\tduxEmit}{@BtduxEmit}
 
 The Tectonopedia command \b{\string\tduxEmit} causes the accumulated HTML
@@ -102,10 +98,8 @@ needed. For instance, in the example above, the directories \tex`pages`,
 paths or relative paths that attempt to escape the HTML output toplevel are
 illegal.
 
-\tduxEmit
 
-
-\entry{tduxSetTemplateVariable}{\string\tduxSetTemplateVariable}{\tduxSetTemplateVariable}
+\Entry{tduxSetTemplateVariable}{\string\tduxSetTemplateVariable}{\tduxSetTemplateVariable}
 \DeclareTerm*{\string\tduxSetTemplateVariable}{@BtduxSetTemplateVariable}
 
 The Tectonopedia command \b{\string\tduxSetTemplateVariable} assigns a value to
@@ -125,10 +119,8 @@ The variable name \tex`NAME` may not contain whitespace.
 Whether the variable contents are HTML-escaped is decided in the template,
 through use of the Tera \tex`safe` directive.
 
-\tduxEmit
 
-
-\entry{tduxProvideFile}{\string\tduxProvideFile}{\tduxProvideFile}
+\Entry{tduxProvideFile}{\string\tduxProvideFile}{\tduxProvideFile}
 \DeclareTerm*{\string\tduxProvideFile}{@BtduxProvideFile}
 
 The Tectonopedia command \b{\string\tduxProvideFile} causes a source file to be
@@ -150,10 +142,8 @@ not contain whitespace.
 If the destination path contains directory separators, output directories are
 created as needed.
 
-\tduxEmit
 
-
-\entry{tduxProvideSpecial}{\string\tduxProvideSpecial}{\tduxProvideSpecial}
+\Entry{tduxProvideSpecial}{\string\tduxProvideSpecial}{\tduxProvideSpecial}
 \DeclareTerm*{\string\tduxProvideSpecial}{@BtduxProvideSpecial}
 
 The Tectonopedia command \b{\string\tduxProvideSpecial} causes one or more

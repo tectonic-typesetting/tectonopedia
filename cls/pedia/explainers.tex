@@ -1,23 +1,22 @@
 % Copyright 2022-2023 the Tectonic Project
 % Licensed under the MIT License
 %
-% Articles in the "explainer" category.
-%
-% \Explainer{SLUG}{TEX-TITLE}{PLAIN-TITLE}
-%  Define an Explainer
-%
-%  Because the titles need to be parsed as verbatim code for
-%  indexing, the actual implementation of this command is split.
+% Articles in the "explainer" category.  Documentation in
+% `~/txt/pedia/explainers.tex`.
 %
 %  TODO: massive duplication with other page types!!!!
 \makeatletter
 %
 \newcommand{\Explainer}[1]{%
+  % finish a previous output, if needed:
+  \pedia@maybeEmit
+
   % save the slug:
   \def\tmp@b{#1}%
 
   % This is the stuff we can do with just the slug:
   \tduxSetupOutput{template.html}{explain/#1/index.html}
+  \@pedia@emitNeededtrue
   \def\pediaRelTop{../../}
   \immediate\write\pediaIndex{\string\output{explain/#1/index.html}}
   \immediate\write\pediaIndex{\string\idef{explainers}{#1}{}}
