@@ -2,7 +2,7 @@
 import { onMounted } from "vue";
 
 onMounted(() => {
-  const socket = new WebSocket(import.meta.env.VITE_BACKEND_WS_URL);
+  const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
   socket.addEventListener("open", (_event) => {
     console.log("connected!");

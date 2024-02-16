@@ -6,8 +6,9 @@
 //! Here we monitor the source tree and rebuild on the fly, using Parcel as a
 //! webserver to host the Pedia webapp in development mode. We run a *second*
 //! webapp to report outputs from the build process, since there's so much going
-//! on. This program runs a Websockets server that feeds information to the
-//! build-info app.
+//! on. This program runs a web server that hosts the build-info UI app as well
+//! as a WebSocket service that allows communications between the backend and
+//! the frontend.
 
 use clap::Args;
 use futures::{FutureExt, StreamExt};
@@ -29,46 +30,21 @@ pub struct ServeArgs {
     parallel: usize,
 }
 
-struct Client {
-    pub sender: mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>,
-}
-
-type Clients = Arc<Mutex<Vec<Client>>>;
-
-fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
-    warp::any().map(move || clients.clone())
-}
-
-type WarpResult<T> = std::result::Result<T, Rejection>;
-
 impl ServeArgs {
-    pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+    pub fn exec(self, _status: &mut dyn StatusBackend) -> Result<()> {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(self.wrapper(status));
-        Ok(())
-    }
-
-    async fn wrapper(self, status: &mut dyn StatusBackend) {
-        if let Err(e) = self.inner().await {
-            status.report_error(&e);
-            std::process::exit(1)
-        }
+            .block_on(self.inner())
     }
 
     async fn inner(self) -> Result<()> {
-        let clients: Clients = Arc::new(Mutex::new(Vec::new()));
-
         // Set up filesystem change watching
 
         let (notify_tx, mut notify_rx) = mpsc::channel(1);
 
-        let watcher = Watcher {
-            notify_tx,
-            _parallel: self.parallel,
-        };
+        let watcher = Watcher { notify_tx };
 
         let mut debouncer = atry!(
             new_debouncer(Duration::from_millis(300), None, watcher);
@@ -84,16 +60,35 @@ impl ServeArgs {
             );
         }
 
-        // Set up the WebSocket server
+        // Set up the UI server
+
+        let clients: Clients = Arc::new(Mutex::new(Vec::new()));
 
         let ws_route = warp::path("ws")
+            .and(warp::path::end())
             .and(warp::ws())
             .and(with_clients(clients.clone()))
             .and_then(ws_handler);
 
-        let routes = ws_route.with(warp::cors().allow_any_origin());
+        let static_route = warp::fs::dir("serve-ui/dist").map(|reply: warp::filters::fs::File| {
+            match reply.path().extension().and_then(|osstr| osstr.to_str()) {
+                Some("css") => {
+                    warp::reply::with_header(reply, "Content-Type", "text/css").into_response()
+                }
+                Some("html") => {
+                    warp::reply::with_header(reply, "Content-Type", "text/html").into_response()
+                }
+                Some("js") => warp::reply::with_header(reply, "Content-Type", "text/javascript")
+                    .into_response(),
+                _ => reply.into_response(),
+            }
+        });
 
-        println!("build data WebSocket backend listening on ws://127.0.0.1:8000/ws");
+        let routes = ws_route
+            .or(static_route)
+            .with(warp::cors().allow_any_origin());
+
+        println!("serve UI listening on http://localhost:8000/");
 
         // Dispatch loop?
 
@@ -104,7 +99,7 @@ impl ServeArgs {
                 x = notify_rx.recv() => {
                     println!("got notify: {x:?}");
                     for c in &*clients.lock().await {
-                        c.sender.send(Ok(Message::text("notify")));
+                        let _ = c.sender.send(Ok(Message::text("notify")));
                     }
                 },
             }
@@ -114,11 +109,25 @@ impl ServeArgs {
     }
 }
 
-async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> WarpResult<impl Reply> {
-    Ok(ws.on_upgrade(move |socket| client_connection(socket, clients)))
+// The webserver for the build/watch UI
+
+struct Client {
+    pub sender: mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>,
 }
 
-async fn client_connection(ws: WebSocket, clients: Clients) {
+type Clients = Arc<Mutex<Vec<Client>>>;
+
+fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
+    warp::any().map(move || clients.clone())
+}
+
+type WarpResult<T> = std::result::Result<T, Rejection>;
+
+async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> WarpResult<impl Reply> {
+    Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, clients)))
+}
+
+async fn ws_client_connection(ws: WebSocket, clients: Clients) {
     // The outbound and inbound sides of the websocket.
     let (client_ws_send, _client_ws_recv) = ws.split();
 
@@ -145,9 +154,11 @@ async fn client_connection(ws: WebSocket, clients: Clients) {
     );
 }
 
+/// The filesystem change notification watcher. When a notification happens, all
+/// we do is post a message onto our channel so that we can expose the event to
+/// async-land.
 struct Watcher {
     notify_tx: mpsc::Sender<()>,
-    _parallel: usize,
 }
 
 impl DebounceEventHandler for Watcher {
