@@ -11,8 +11,8 @@
 
 use clap::Args;
 use futures::{FutureExt, StreamExt};
-use notify_debouncer_mini::{DebounceEventHandler, DebounceEventResult};
-use std::{convert::Infallible, sync::Arc};
+use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
+use std::{convert::Infallible, path::Path, sync::Arc, time::Duration};
 use tectonic_errors::prelude::*;
 use tectonic_status_base::StatusBackend;
 use tokio::sync::{mpsc, Mutex};
@@ -42,12 +42,49 @@ fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = I
 type WarpResult<T> = std::result::Result<T, Rejection>;
 
 impl WatchArgs {
-    pub fn exec(self, _status: &mut dyn StatusBackend) -> Result<()> {
-        let _watcher = Watcher {
+    pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(self.wrapper(status));
+        Ok(())
+    }
+
+    async fn wrapper(self, status: &mut dyn StatusBackend) {
+        if let Err(e) = self.inner().await {
+            status.report_error(&e);
+            std::process::exit(1)
+        }
+    }
+
+    async fn inner(self) -> Result<()> {
+        let clients: Clients = Arc::new(Mutex::new(Vec::new()));
+
+        // Set up filesystem change watching
+
+        let (notify_tx, mut notify_rx) = mpsc::channel(1);
+
+        let watcher = Watcher {
+            notify_tx,
             _parallel: self.parallel,
         };
 
-        let clients: Clients = Arc::new(Mutex::new(Vec::new()));
+        let mut debouncer = atry!(
+            new_debouncer(Duration::from_millis(300), None, watcher);
+            ["failed to set up filesystem change notifier"]
+        );
+
+        for dname in &["cls", "idx", "src", "txt", "web"] {
+            atry!(
+                debouncer
+                    .watcher()
+                    .watch(Path::new(dname), notify::RecursiveMode::Recursive);
+                ["failed to watch directory `{}`", dname]
+            );
+        }
+
+        // Set up the WebSocket server
 
         let ws_route = warp::path("ws")
             .and(warp::ws())
@@ -56,13 +93,22 @@ impl WatchArgs {
 
         let routes = ws_route.with(warp::cors().allow_any_origin());
 
-        println!("build data WebSocket backend listening on http://127.0.0.1:8000/");
+        println!("build data WebSocket backend listening on ws://127.0.0.1:8000/ws");
 
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(warp::serve(routes).run(([127, 0, 0, 1], 8000)));
+        // Dispatch loop?
+
+        tokio::task::spawn(warp::serve(routes).run(([127, 0, 0, 1], 8000)));
+
+        loop {
+            tokio::select! {
+                x = notify_rx.recv() => {
+                    println!("got notify: {x:?}");
+                    for c in &*clients.lock().await {
+                        c.sender.send(Ok(Message::text("notify")));
+                    }
+                },
+            }
+        }
 
         Ok(())
     }
@@ -100,6 +146,7 @@ async fn client_connection(ws: WebSocket, clients: Clients) {
 }
 
 struct Watcher {
+    notify_tx: mpsc::Sender<()>,
     _parallel: usize,
 }
 
@@ -109,6 +156,7 @@ impl DebounceEventHandler for Watcher {
             eprintln!("fs watch error!");
         } else {
             println!("event!");
+            futures::executor::block_on(async { self.notify_tx.send(()).await.unwrap() });
         }
     }
 }
