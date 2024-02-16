@@ -12,7 +12,7 @@
 use clap::Args;
 use futures::{FutureExt, StreamExt};
 use notify_debouncer_mini::{DebounceEventHandler, DebounceEventResult};
-use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc};
 use tectonic_errors::prelude::*;
 use tectonic_status_base::StatusBackend;
 use tokio::sync::{mpsc, Mutex};
@@ -43,8 +43,8 @@ type WarpResult<T> = std::result::Result<T, Rejection>;
 
 impl WatchArgs {
     pub fn exec(self, _status: &mut dyn StatusBackend) -> Result<()> {
-        let watcher = Watcher {
-            parallel: self.parallel,
+        let _watcher = Watcher {
+            _parallel: self.parallel,
         };
 
         let clients: Clients = Arc::new(Mutex::new(Vec::new()));
@@ -56,7 +56,7 @@ impl WatchArgs {
 
         let routes = ws_route.with(warp::cors().allow_any_origin());
 
-        println!("Listening http://127.0.0.1:8000/");
+        println!("build data WebSocket backend listening on http://127.0.0.1:8000/");
 
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -73,28 +73,39 @@ async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> WarpResult<impl Reply
 }
 
 async fn client_connection(ws: WebSocket, clients: Clients) {
-    let (client_ws_sender, _client_ws_rcv) = ws.split();
-    let (client_sender, client_rcv) = mpsc::unbounded_channel();
+    // The outbound and inbound sides of the websocket.
+    let (client_ws_send, _client_ws_recv) = ws.split();
 
-    let client_rcv = UnboundedReceiverStream::new(client_rcv);
+    // A channel that we'll use to distribute outbound messages to the WS client.
+    let (client_outbound_send, client_outbound_recv) = mpsc::unbounded_channel();
+
+    // Remember the sender
     clients.lock().await.push(Client {
-        sender: client_sender,
+        sender: client_outbound_send,
     });
 
-    tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(e) = result {
-            eprintln!("error sending websocket msg: {}", e);
-        }
-    }));
+    // Spawn a task that just hangs out forwarding messages from the channel to
+    // the WS client.
+    let client_outbound_stream = UnboundedReceiverStream::new(client_outbound_recv);
+
+    tokio::task::spawn(
+        client_outbound_stream
+            .forward(client_ws_send)
+            .map(|result| {
+                if let Err(e) = result {
+                    eprintln!("error sending websocket message: {}", e);
+                }
+            }),
+    );
 }
 
 struct Watcher {
-    parallel: usize,
+    _parallel: usize,
 }
 
 impl DebounceEventHandler for Watcher {
     fn handle_event(&mut self, event: DebounceEventResult) {
-        if let Err(e) = event {
+        if let Err(_e) = event {
             eprintln!("fs watch error!");
         } else {
             println!("event!");
