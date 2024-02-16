@@ -1,7 +1,7 @@
 // Copyright 2024 the Tectonic Project
 // Licensed under the MIT License
 
-//! The long-running "watch" operation.
+//! The long-running "serve" operation.
 //!
 //! Here we monitor the source tree and rebuild on the fly, using Parcel as a
 //! webserver to host the Pedia webapp in development mode. We run a *second*
@@ -22,9 +22,9 @@ use warp::{
     Filter, Rejection, Reply,
 };
 
-/// The watch operation.
+/// The serve operation.
 #[derive(Args, Debug)]
-pub struct WatchArgs {
+pub struct ServeArgs {
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
 }
@@ -41,7 +41,7 @@ fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = I
 
 type WarpResult<T> = std::result::Result<T, Rejection>;
 
-impl WatchArgs {
+impl ServeArgs {
     pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()

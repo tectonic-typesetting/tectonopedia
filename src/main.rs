@@ -18,10 +18,10 @@ mod multivec;
 mod operation;
 mod pass1;
 mod pass2;
+mod serve;
 mod tex_escape;
 #[macro_use]
 mod tex_pass;
-mod watch;
 mod worker_status;
 mod yarn;
 
@@ -58,7 +58,7 @@ impl ToplevelArgs {
             Action::Build(a) => a.exec(status.as_mut()),
             Action::FirstPassImpl(a) => a.exec(status.as_mut()),
             Action::SecondPassImpl(a) => a.exec(status.as_mut()),
-            Action::Watch(a) => a.exec(status.as_mut()),
+            Action::Serve(a) => a.exec(status.as_mut()),
         };
 
         if let Err(e) = result {
@@ -73,5 +73,5 @@ enum Action {
     Build(build::BuildArgs),
     FirstPassImpl(pass1::FirstPassImplArgs),
     SecondPassImpl(pass2::SecondPassImplArgs),
-    Watch(watch::WatchArgs),
+    Serve(serve::ServeArgs),
 }
