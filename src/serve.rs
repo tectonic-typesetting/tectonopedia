@@ -34,9 +34,12 @@ pub struct ServeArgs {
 }
 
 /// A message to be delivered to the main "serve" thread.
-enum ServeMessage {
-    /// Quit.
-    Quit,
+enum ServeCommand {
+    /// Rebuild the document.
+    Build,
+
+    /// Quit the whole application.
+    Quit(Result<()>),
 }
 
 impl ServeArgs {
@@ -51,13 +54,13 @@ impl ServeArgs {
     async fn inner(self) -> Result<()> {
         // A channel for the secondary tasks to issue commands to the main task.
 
-        let (command_tx, mut command_rx) = mpsc::channel(1);
+        let (command_tx, mut command_rx) = mpsc::channel(4);
 
         // Set up filesystem change watching
 
-        let (notify_tx, mut notify_rx) = mpsc::channel(1);
-
-        let watcher = Watcher { notify_tx };
+        let watcher = Watcher {
+            command_tx: command_tx.clone(),
+        };
 
         let mut debouncer = atry!(
             new_debouncer(Duration::from_millis(300), None, watcher);
@@ -101,32 +104,50 @@ impl ServeArgs {
             .or(static_route)
             .with(warp::cors().allow_any_origin());
 
-        let (warp_shutdown_tx, warp_shutdown_rx) = oneshot::channel();
+        let (warp_quit_tx, warp_quit_rx) = oneshot::channel();
 
-        println!("serve UI listening on http://localhost:8000/");
+        let (warp_addr, warp_server) =
+            warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], 8000), async {
+                warp_quit_rx.await.ok();
+            });
 
         // Set up `yarn serve` for the app
 
-        let (yarn_quit_tx, yarn_quit_rx) = mpsc::channel(1);
+        let (yarn_quit_tx, yarn_quit_rx) = oneshot::channel();
+        let yarn_server = YarnServer::new(1234, yarn_quit_rx, command_tx.clone())?;
 
-        let yarn_server = YarnServer::new(1234, yarn_quit_rx)?;
-        println!("app listening on http://localhost:1234/");
+        // Start it all up!
 
-        // Dispatch loop?
-
-        let (addr, server) =
-            warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], 8000), async {
-                warp_shutdown_rx.await.ok();
-            });
-
-        let warp_join = tokio::task::spawn(server);
+        let warp_join = tokio::task::spawn(warp_server);
         let yarn_join = tokio::task::spawn(yarn_server.serve());
+
+        println!();
+        println!("    app listening on:        http://localhost:1234/");
+        println!(
+            "    build UI listening on:   http://localhost:{}/",
+            warp_addr.port()
+        );
+        println!();
+        println!("To quit, use the Quit button in the build UI");
+        println!();
+
+        // Our main loop -- watch for incoming commands and build when needed.
+
+        let mut outcome = Err(anyhow!("unexpected mainloop termination"));
 
         while let Some(cmd) = command_rx.recv().await {
             match cmd {
-                ServeMessage::Quit => {
-                    println!("Quitting ...");
+                ServeCommand::Quit(r) => {
+                    if r.is_ok() {
+                        println!("Quitting as commanded ...");
+                    }
+
+                    outcome = r;
                     break;
+                }
+
+                ServeCommand::Build => {
+                    println!("Should build now.");
                 }
             }
 
@@ -142,13 +163,19 @@ impl ServeArgs {
 
         // Shutdown
 
-        warp_shutdown_tx.send(());
+        if let Err(_) = yarn_quit_tx.send(()) {
+            eprintln!("error: failed to send shutdown signal to the `yarn serve` subprocess");
+        } else if let Err(e) = yarn_join.await {
+            eprintln!("error waiting for `yarn serve` subprocess to finish: {e}");
+        }
 
-        yarn_quit_tx.send(()).await;
-        warp_join.await;
-        yarn_join.await;
+        if let Err(_) = warp_quit_tx.send(()) {
+            eprintln!("error: failed to send shutdown signal to the Warp webserver task");
+        } else if let Err(e) = warp_join.await {
+            eprintln!("error waiting for Warp webserver task to finish: {e}");
+        }
 
-        Ok(())
+        outcome
     }
 }
 
@@ -160,11 +187,11 @@ struct Client {
 
 struct WarpServerState {
     clients: Vec<Client>,
-    command_tx: mpsc::Sender<ServeMessage>,
+    command_tx: mpsc::Sender<ServeCommand>,
 }
 
 impl WarpServerState {
-    pub fn new(command_tx: mpsc::Sender<ServeMessage>) -> Self {
+    pub fn new(command_tx: mpsc::Sender<ServeCommand>) -> Self {
         WarpServerState {
             clients: Vec::new(),
             command_tx,
@@ -193,7 +220,7 @@ async fn ws_client_connection(ws: WebSocket, warp_state: WarpServer) {
     // A channel that we'll use to distribute outbound messages to the WS client.
     let (client_outbound_tx, client_outbound_rx) = mpsc::unbounded_channel();
 
-    // Remember the sender
+    // Record this client
     let command_tx = {
         let mut state = warp_state.lock().await;
 
@@ -227,22 +254,27 @@ async fn ws_client_connection(ws: WebSocket, warp_state: WarpServer) {
 
         match msg.to_str() {
             Ok("quit") => {
-                println!("got quit message");
-                command_tx.send(ServeMessage::Quit).await;
+                if let Err(e) = command_tx.send(ServeCommand::Quit(Ok(()))).await {
+                    println!("error in WebSocket client handler notifying main task: {e:?}");
+                    break;
+                }
             }
 
             _ => {
-                eprintln!("unrecognized message: {:?}", msg);
+                eprintln!("unrecognized WebSocket client message: {:?}", msg);
             }
         }
     }
+
+    // TODO: remove ourselves from the client pool in some fashion so that
+    // the server doesn't try to keep on sending messages to us.
 }
 
 /// The filesystem change notification watcher. When a notification happens, all
 /// we do is post a message onto our channel so that we can expose the event to
 /// async-land.
 struct Watcher {
-    notify_tx: mpsc::Sender<()>,
+    command_tx: mpsc::Sender<ServeCommand>,
 }
 
 impl DebounceEventHandler for Watcher {
@@ -250,8 +282,9 @@ impl DebounceEventHandler for Watcher {
         if let Err(_e) = event {
             eprintln!("fs watch error!");
         } else {
-            println!("event!");
-            futures::executor::block_on(async { self.notify_tx.send(()).await.unwrap() });
+            futures::executor::block_on(async {
+                self.command_tx.send(ServeCommand::Build).await.unwrap()
+            });
         }
     }
 }
@@ -260,11 +293,16 @@ impl DebounceEventHandler for Watcher {
 
 struct YarnServer {
     child: Child,
-    quit_rx: mpsc::Receiver<()>,
+    quit_rx: oneshot::Receiver<()>,
+    command_tx: mpsc::Sender<ServeCommand>,
 }
 
 impl YarnServer {
-    fn new(port: u16, quit_rx: mpsc::Receiver<()>) -> Result<Self> {
+    fn new(
+        port: u16,
+        quit_rx: oneshot::Receiver<()>,
+        command_tx: mpsc::Sender<ServeCommand>,
+    ) -> Result<Self> {
         let mut cmd = Command::new("yarn");
         cmd.arg("serve")
             .arg(format!("--port={port}"))
@@ -277,7 +315,11 @@ impl YarnServer {
             ["failed to launch `yarn serve` process"]
         );
 
-        Ok(YarnServer { child, quit_rx })
+        Ok(YarnServer {
+            child,
+            quit_rx,
+            command_tx,
+        })
     }
 
     async fn serve(mut self) {
@@ -285,12 +327,23 @@ impl YarnServer {
 
         loop {
             tokio::select! {
-                _ = self.quit_rx.recv() => {
+                _ = self.quit_rx => {
                     break;
                 },
 
                 status = self.child.wait() => {
-                    eprintln!("`yarn serve` process exited early: {status:?}");
+                    let msg = match status {
+                        Ok(s) => format!("`yarn serve` subprocess exited early, {s}"),
+                        Err(e) => format!("`yarn serve` subprocess exited early and failed to get outcome: {e}"),
+                    };
+
+                    let cmd = ServeCommand::Quit(Err(anyhow!(msg.clone())));
+
+                    if let Err(e) = self.command_tx.send(cmd).await {
+                        eprintln!("error: {msg}");
+                        eprintln!("  ... furthermore, the yarn task failed to notify main task to exit: {e:?}");
+                    }
+
                     break;
                 }
             }
@@ -298,6 +351,9 @@ impl YarnServer {
 
         std::mem::drop(stdin);
         let status = self.child.wait().await;
-        eprintln!("second yarn serve status: {status:?}");
+
+        if status.is_err() {
+            eprintln!("error: `yarn serve` subprocess exited with an error: {status:?}");
+        }
     }
 }
