@@ -18,6 +18,7 @@ use tectonic_errors::prelude::*;
 use tectonic_status_base::StatusBackend;
 use tokio::{
     process::{Child, Command},
+    signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot, Mutex},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -40,6 +41,11 @@ enum ServeCommand {
 
     /// Quit the whole application.
     Quit(Result<()>),
+}
+
+enum ServeOutcome {
+    Ok,
+    Signal(libc::c_int),
 }
 
 impl ServeArgs {
@@ -116,6 +122,23 @@ impl ServeArgs {
         let (yarn_quit_tx, yarn_quit_rx) = oneshot::channel();
         let yarn_server = YarnServer::new(1234, yarn_quit_rx, command_tx.clone())?;
 
+        // Signal handling
+
+        let mut sigint_event = atry!(
+            signal(SignalKind::interrupt());
+            ["failed to register SIGINT handler"]
+        );
+
+        let mut sighup_event = atry!(
+            signal(SignalKind::hangup());
+            ["failed to register SIGHUP handler"]
+        );
+
+        let mut sigterm_event = atry!(
+            signal(SignalKind::terminate());
+            ["failed to register SIGTERM handler"]
+        );
+
         // Start it all up!
 
         let warp_join = tokio::task::spawn(warp_server);
@@ -128,37 +151,63 @@ impl ServeArgs {
             warp_addr.port()
         );
         println!();
-        println!("To quit, use the Quit button in the build UI");
-        println!();
 
         // Our main loop -- watch for incoming commands and build when needed.
 
         let mut outcome = Err(anyhow!("unexpected mainloop termination"));
 
-        while let Some(cmd) = command_rx.recv().await {
-            match cmd {
-                ServeCommand::Quit(r) => {
-                    if r.is_ok() {
-                        println!("Quitting as commanded ...");
-                    }
+        loop {
+            tokio::select! {
+                cmd = command_rx.recv() => {
+                    if let Some(cmd) = cmd {
+                        match cmd {
+                            ServeCommand::Quit(r) => {
+                                match r {
+                                    Ok(_) => {
+                                        println!("Quitting as commanded ...");
+                                        outcome = Ok(ServeOutcome::Ok);
+                                    }
 
-                    outcome = r;
+                                    Err(e) => {
+                                        outcome = Err(e);
+                                    }
+                                }
+
+                                break;
+                            }
+
+                            ServeCommand::Build => {
+                                println!("Should build now.");
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                _ = sigint_event.recv() => {
+                    println!("\nQuitting on SIGINT ...");
+                    // See below for an explanation of what's going on here:
+                    outcome = Ok(ServeOutcome::Signal(libc::SIGINT));
                     break;
                 }
 
-                ServeCommand::Build => {
-                    println!("Should build now.");
+                _ = sighup_event.recv() => {
+                    println!("\nQuitting on SIGHUP ...");
+                    outcome = Ok(ServeOutcome::Signal(libc::SIGHUP));
+                    break;
+                }
+
+                _ = sigterm_event.recv() => {
+                    println!("\nQuitting on SIGTERM ...");
+                    outcome = Ok(ServeOutcome::Signal(libc::SIGTERM));
+                    break;
                 }
             }
 
-            //tokio::select! {
-            //    x = notify_rx.recv() => {
-            //        println!("got notify: {x:?}");
-            //        for c in &*warp_state.lock().await.clients {
-            //            let _ = c.sender.send(Ok(Message::text("notify")));
-            //        }
-            //    },
-            //}
+            // for c in &*warp_state.lock().await.clients {
+            //     let _ = c.sender.send(Ok(Message::text("notify")));
+            // }
         }
 
         // Shutdown
@@ -175,7 +224,27 @@ impl ServeArgs {
             eprintln!("error waiting for Warp webserver task to finish: {e}");
         }
 
-        outcome
+        match outcome {
+            Ok(ServeOutcome::Ok) => Ok(()),
+
+            Ok(ServeOutcome::Signal(signum)) => {
+                // When we're terminated by a signal, we want to clean up
+                // nicely, but then we want to indicate the killing signal to
+                // our parent process. The correct way to do this is to restore
+                // the associated signal handler to its default behavior, and
+                // then re-kill ourselves with the same signal.
+                unsafe {
+                    libc::signal(signum, libc::SIG_DFL);
+                    libc::kill(libc::getpid(), signum);
+                }
+                // Anything from here on out should be unreachable, but just in case ...
+                Err(anyhow!(format!(
+                    "failed to self-terminate with signal {signum}"
+                )))
+            }
+
+            Err(e) => Err(e),
+        }
     }
 }
 

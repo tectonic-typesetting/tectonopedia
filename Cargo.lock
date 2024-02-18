@@ -2867,6 +2867,7 @@ dependencies = [
  "filetime",
  "futures",
  "generic-array",
+ "libc",
  "notify-debouncer-mini",
  "num_cpus",
  "serde",
