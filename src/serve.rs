@@ -17,6 +17,7 @@ use std::{convert::Infallible, path::Path, sync::Arc, time::Duration};
 use tectonic_errors::prelude::*;
 use tectonic_status_base::StatusBackend;
 use tokio::{
+    io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
     signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot, Mutex},
@@ -32,6 +33,28 @@ use warp::{
 pub struct ServeArgs {
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ClientMessage {
+    BuildStarted,
+    YarnOutput(YarnOutputMessage),
+    ServerQuitting,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+struct YarnOutputMessage {
+    stream: ToolOutputStream,
+    lines: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ToolOutputStream {
+    Stdout,
+    Stderr,
 }
 
 /// A message to be delivered to the main "serve" thread.
@@ -84,7 +107,8 @@ impl ServeArgs {
 
         // Set up the build-UI server
 
-        let warp_state: WarpServer = Arc::new(Mutex::new(WarpServerState::new(command_tx.clone())));
+        let mut warp_state: WarpState =
+            Arc::new(Mutex::new(WarpStateInner::new(command_tx.clone())));
 
         let ws_route = warp::path("ws")
             .and(warp::path::end())
@@ -120,7 +144,8 @@ impl ServeArgs {
         // Set up `yarn serve` for the app
 
         let (yarn_quit_tx, yarn_quit_rx) = oneshot::channel();
-        let yarn_server = YarnServer::new(1234, yarn_quit_rx, command_tx.clone())?;
+        let yarn_server =
+            YarnServer::new(1234, yarn_quit_rx, command_tx.clone(), warp_state.clone())?;
 
         // Signal handling
 
@@ -178,6 +203,7 @@ impl ServeArgs {
 
                             ServeCommand::Build => {
                                 println!("Should build now.");
+                                notify_clients(&mut warp_state, &ClientMessage::BuildStarted).await;
                             }
                         }
                     } else {
@@ -204,13 +230,11 @@ impl ServeArgs {
                     break;
                 }
             }
-
-            // for c in &*warp_state.lock().await.clients {
-            //     let _ = c.sender.send(Ok(Message::text("notify")));
-            // }
         }
 
         // Shutdown
+
+        notify_clients(&mut warp_state, &ClientMessage::ServerQuitting).await;
 
         if let Err(_) = yarn_quit_tx.send(()) {
             eprintln!("error: failed to send shutdown signal to the `yarn serve` subprocess");
@@ -254,35 +278,44 @@ struct Client {
     pub sender: mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>,
 }
 
-struct WarpServerState {
+struct WarpStateInner {
     clients: Vec<Client>,
     command_tx: mpsc::Sender<ServeCommand>,
 }
 
-impl WarpServerState {
+impl WarpStateInner {
     pub fn new(command_tx: mpsc::Sender<ServeCommand>) -> Self {
-        WarpServerState {
+        WarpStateInner {
             clients: Vec::new(),
             command_tx,
         }
     }
 }
 
-type WarpServer = Arc<Mutex<WarpServerState>>;
+type WarpState = Arc<Mutex<WarpStateInner>>;
 
 fn with_warp_state(
-    warp_state: WarpServer,
-) -> impl Filter<Extract = (WarpServer,), Error = Infallible> + Clone {
+    warp_state: WarpState,
+) -> impl Filter<Extract = (WarpState,), Error = Infallible> + Clone {
     warp::any().map(move || warp_state.clone())
+}
+
+async fn notify_clients(state: &mut WarpState, msg: &ClientMessage) {
+    let ws_msg = Message::text(serde_json::to_string(msg).unwrap());
+
+    for c in &*state.lock().await.clients {
+        // Assume that failure is a disconnected client; just ignore it??
+        let _ = c.sender.send(Ok(ws_msg.clone()));
+    }
 }
 
 type WarpResult<T> = std::result::Result<T, Rejection>;
 
-async fn ws_handler(ws: warp::ws::Ws, warp_state: WarpServer) -> WarpResult<impl Reply> {
+async fn ws_handler(ws: warp::ws::Ws, warp_state: WarpState) -> WarpResult<impl Reply> {
     Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, warp_state)))
 }
 
-async fn ws_client_connection(ws: WebSocket, warp_state: WarpServer) {
+async fn ws_client_connection(ws: WebSocket, warp_state: WarpState) {
     // The outbound and inbound sides of the websocket.
     let (client_ws_tx, mut client_ws_rx) = ws.split();
 
@@ -364,6 +397,7 @@ struct YarnServer {
     child: Child,
     quit_rx: oneshot::Receiver<()>,
     command_tx: mpsc::Sender<ServeCommand>,
+    warp_state: WarpState,
 }
 
 impl YarnServer {
@@ -371,13 +405,15 @@ impl YarnServer {
         port: u16,
         quit_rx: oneshot::Receiver<()>,
         command_tx: mpsc::Sender<ServeCommand>,
+        warp_state: WarpState,
     ) -> Result<Self> {
         let mut cmd = Command::new("yarn");
         cmd.arg("serve")
             .arg(format!("--port={port}"))
             .arg("--watch-for-stdin")
             .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped());
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
         let child = atry!(
             cmd.spawn();
@@ -388,17 +424,66 @@ impl YarnServer {
             child,
             quit_rx,
             command_tx,
+            warp_state,
         })
     }
 
     async fn serve(mut self) {
         let stdin = self.child.stdin.take().expect("failed to open child stdin");
 
+        let stdout = self
+            .child
+            .stdout
+            .take()
+            .expect("failed to open child stdout");
+        let mut stdout_lines = BufReader::new(stdout).lines();
+
+        let stderr = self
+            .child
+            .stderr
+            .take()
+            .expect("failed to open child stderr");
+        let mut stderr_lines = BufReader::new(stderr).lines();
+
         loop {
             tokio::select! {
-                _ = self.quit_rx => {
+                _ = &mut self.quit_rx => {
                     break;
                 },
+
+                line = stdout_lines.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            notify_clients(&mut self.warp_state, &ClientMessage::YarnOutput(YarnOutputMessage {
+                                stream: ToolOutputStream::Stdout,
+                                lines: vec![line],
+                            })).await;
+                        }
+
+                        Err(e) => {
+                            eprintln!("error: failed to read `yarn serve` output: {e}");
+                        }
+
+                        _ => {}
+                    }
+                }
+
+                line = stderr_lines.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            notify_clients(&mut self.warp_state, &ClientMessage::YarnOutput(YarnOutputMessage {
+                                stream: ToolOutputStream::Stderr,
+                                lines: vec![line],
+                            })).await;
+                        }
+
+                        Err(e) => {
+                            eprintln!("error: failed to read `yarn serve` output: {e}");
+                        }
+
+                        _ => {}
+                    }
+                }
 
                 status = self.child.wait() => {
                     let msg = match status {
@@ -418,7 +503,9 @@ impl YarnServer {
             }
         }
 
+        // Close stdin, informing the process to exit (thanks to `--watch-for-stdin`)
         std::mem::drop(stdin);
+
         let status = self.child.wait().await;
 
         if status.is_err() {
