@@ -2884,6 +2884,7 @@ dependencies = [
  "threadpool",
  "tokio",
  "tokio-stream",
+ "tokio-task-pool",
  "toml 0.5.11",
  "walkdir",
  "warp",
@@ -3042,6 +3043,7 @@ dependencies = [
  "libc",
  "mio",
  "num_cpus",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -3078,6 +3080,15 @@ checksum = "397c988d37662c7dda6d2208364a706264bf3d6138b11d436cbac0ad38832842"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-task-pool"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b979d664a052ebb638f0eb4d1134bed9552a5975b82c0c61bf55ff27ff8953"
+dependencies = [
  "tokio",
 ]
 

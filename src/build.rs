@@ -19,16 +19,13 @@
 //! it and it can only run when all of the TeX stuff is done).
 
 use clap::Args;
-use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
 use std::{
     fs,
     io::{ErrorKind, Write},
-    path::Path,
-    time::{Duration, Instant},
+    time::Instant,
 };
-use tectonic::status::termcolor::TermcolorStatusBackend;
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_error, tt_note, ChatterLevel, StatusBackend};
+use tectonic_status_base::{tt_error, tt_note, StatusBackend};
 
 use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pass, yarn};
 
@@ -36,7 +33,7 @@ use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pas
 /// modified during this build process, if the boolean argument is true. The
 /// list may be empty if nothing actually changed, or if the argument is false.
 /// This list is used in "watch" mode to efficiently update Parcel.js.
-fn primary_build_implementation(
+async fn primary_build_implementation(
     n_workers: usize,
     collect_paths: bool,
     terse_output: bool,
@@ -74,7 +71,8 @@ fn primary_build_implementation(
         &mut cache,
         &mut indices,
         status,
-    )?;
+    )
+    .await?;
 
     if terse_output {
         print!("pass1");
@@ -136,7 +134,8 @@ fn primary_build_implementation(
         &mut cache,
         &mut indices,
         status,
-    )?;
+    )
+    .await?;
     let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
 
     if terse_output {
@@ -200,7 +199,7 @@ fn primary_build_implementation(
     Ok(paths)
 }
 
-fn build_through_index(
+async fn build_through_index(
     n_workers: usize,
     do_rename: bool,
     collect_paths: bool,
@@ -250,7 +249,7 @@ fn build_through_index(
     // Main build.
 
     let modified_files =
-        primary_build_implementation(n_workers, collect_paths, terse_output, status)?;
+        primary_build_implementation(n_workers, collect_paths, terse_output, status).await?;
 
     if !terse_output {
         tt_note!(
@@ -291,13 +290,21 @@ impl BuildArgs {
     /// In the "build" op, we do the main build, then just cap it off with a
     /// `yarn build` and we're done.
     pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(self.inner(status))
+    }
+
+    async fn inner(self, status: &mut dyn StatusBackend) -> Result<()> {
         let n_workers = if self.parallel > 0 {
             self.parallel
         } else {
             num_cpus::get()
         };
 
-        let (t0, _) = build_through_index(n_workers, true, false, false, status)?;
+        let (t0, _) = build_through_index(n_workers, true, false, false, status).await?;
 
         atry!(
             yarn::yarn_build(status);
@@ -309,160 +316,6 @@ impl BuildArgs {
             "full build took {:.1} seconds",
             t0.elapsed().as_secs_f32()
         );
-        Ok(())
-    }
-}
-
-/// The watch operation.
-#[derive(Args, Debug)]
-pub struct OldWatchArgs {
-    #[arg(long, short = 'j', default_value_t = 0)]
-    parallel: usize,
-
-    #[arg(long)]
-    debug_watch: bool,
-}
-
-impl OldWatchArgs {
-    /// This function is special since it takes ownership of the status backend,
-    /// since we need to send it to another thread for steady-state operations.
-    pub fn exec(self, status: Box<dyn StatusBackend + Send>) {
-        // Set up our object that will watch for changes, and run an initial
-        // build.
-
-        let mut watcher = Watcher {
-            parallel: self.parallel,
-            status,
-            last_succeeded: true,
-            debug: self.debug_watch,
-        };
-
-        watcher.build();
-
-        // OK well now let's create another status backend that we'll use in
-        // case anything goes wrong from here on out. I think it's better to
-        // send the "original" status to the watcher since it will be set up
-        // with whatever configuration and customization happens by default.
-
-        let mut status = TermcolorStatusBackend::new(ChatterLevel::Normal);
-
-        if let Err(e) = self.finish_exec(watcher) {
-            status.report_error(&e);
-            std::process::exit(1)
-        }
-    }
-
-    fn finish_exec(self, watcher: Watcher) -> Result<()> {
-        let mut yarn_child = yarn::yarn_serve()?;
-
-        // Now set up the debounced notifier that will handle things from here
-        // on out.
-
-        if self.debug_watch {
-            println!("debug[watcher]: setting up debounced watcher at 300 ms");
-        }
-
-        let mut debouncer = atry!(
-            new_debouncer(Duration::from_millis(300), None, watcher);
-            ["failed to set up filesystem change notifier"]
-        );
-
-        for dname in &["cls", "idx", "src", "txt", "web"] {
-            if self.debug_watch {
-                println!(
-                    "debug[watcher]: watching recursively: `{}`",
-                    Path::new(dname).display()
-                );
-            }
-
-            atry!(
-                debouncer
-                    .watcher()
-                    .watch(Path::new(dname), notify::RecursiveMode::Recursive);
-                ["failed to watch directory `{}`", dname]
-            );
-        }
-
-        let _ignore = yarn_child.wait();
-        Ok(())
-    }
-}
-
-struct Watcher {
-    parallel: usize,
-    status: Box<dyn StatusBackend + Send>,
-    last_succeeded: bool,
-    debug: bool,
-}
-
-impl DebounceEventHandler for Watcher {
-    fn handle_event(&mut self, event: DebounceEventResult) {
-        if self.debug {
-            println!("debug[watcher]: event: {:?}", event);
-        }
-
-        if let Err(mut e) = event {
-            tt_error!(
-                self.status.as_mut(),
-                "file change notification system returned error(s)"
-            );
-
-            for e in e.drain(..) {
-                tt_error!(self.status.as_mut(), "failed to detect changes"; e.into());
-            }
-        } else {
-            self.build();
-        }
-    }
-}
-
-impl Watcher {
-    fn build(&mut self) {
-        if let Err(e) = self.build_inner() {
-            self.status.report_error(&e);
-            self.last_succeeded = false;
-        } else {
-            self.last_succeeded = true;
-        }
-    }
-
-    fn build_inner(&mut self) -> Result<()> {
-        let status = self.status.as_mut();
-
-        let n_workers = if self.parallel > 0 {
-            self.parallel
-        } else {
-            num_cpus::get()
-        };
-
-        if self.debug {
-            println!(
-                "debug[watcher]: launch (n_workers={n_workers}, last_succeeded={})\n\n(parcel placeholder ...)",
-                self.last_succeeded
-            );
-        }
-
-        println!();
-        let (t0, changed) =
-            build_through_index(n_workers, self.last_succeeded, true, true, status)?;
-        println!(" ... {:.1} seconds elapsed\n\n", t0.elapsed().as_secs_f32());
-
-        // Touch the modified files; Parcel's change-detection code doesn't
-        // catch atomic replacements.
-
-        for output in &changed {
-            let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
-
-            if self.debug {
-                println!("debug[watcher]: touch `{p}`");
-            }
-
-            atry!(
-                filetime::set_file_mtime(&p, filetime::FileTime::now());
-                ["unable to update modification time of file `{}`", p]
-            );
-        }
-
         Ok(())
     }
 }

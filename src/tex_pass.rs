@@ -4,7 +4,7 @@
 //! A stage of the build process that does a pass over all TeX inputs.
 //!
 //! - Have to launch TeX in subprocesses because the engine can't be multithreaded
-//! - Use a threadpool to manage that
+//! - Use a task pool to manage that
 //! - Subprocess stderr is passed straight on through for error reporing
 //! - Subprocess stdout is parsed for information transfer
 
@@ -12,11 +12,11 @@ use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
     process::{ChildStdin, Command, Stdio},
-    sync::mpsc::{channel, TryRecvError},
 };
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
-use threadpool::ThreadPool;
+use tokio::sync::mpsc::{channel, error::TryRecvError};
+use tokio_task_pool::Pool;
 
 use crate::{
     cache::{Cache, OpCacheData},
@@ -126,9 +126,9 @@ macro_rules! stry {
 
 /// A type that can drive a TeX worker process.
 ///
-/// This type is created in the primary thread and sent to one of the threadpool
-/// worker threads. In that worker thread, it then interacts closely with the
-/// TeX subprocess. Once that subprocess exits, it is consumed.
+/// This type is created in the primary thread and sent to one of the task pool
+/// workers. In that worker, it then interacts closely with the TeX subprocess.
+/// Once that subprocess exits, it is consumed.
 pub trait WorkerDriver: Send {
     /// This type encodes basic information about the TeX operation for this
     /// input.
@@ -251,10 +251,10 @@ fn process_one_input<W: WorkerDriver>(
 /// A type that can manage the execution of a large batch of TeX processing jobs.
 pub trait TexProcessor {
     /// This associated type is the one that actually deals with managing a TeX
-    /// subprocess. Workers are created in the main thread and sent to a
-    /// threadpool worker thread, in which they interact with the TeX
-    /// subprocess. After that subprocess exits, the worker is consumed and its
-    /// `Item` type is returned to the main thread.
+    /// subprocess. Workers are created in the main thread and sent to a worker
+    /// task, in which they interact with the TeX subprocess. After that
+    /// subprocess exits, the worker is consumed and its `Item` type is returned
+    /// to the main thread.
     type Worker: WorkerDriver + 'static;
 
     /// Create an operation info object.
@@ -300,7 +300,7 @@ pub trait TexOperation: Send {
     fn operation_ident(&self) -> DigestData;
 }
 
-pub fn process_inputs<'a, P: TexProcessor>(
+pub async fn process_inputs<'a, P: TexProcessor>(
     inputs: impl IntoIterator<Item = &'a RuntimeEntityIdent>,
     n_workers: usize,
     proc: &mut P,
@@ -313,9 +313,9 @@ pub fn process_inputs<'a, P: TexProcessor>(
         ["cannot obtain the path to the current executable"]
     );
 
-    let pool = ThreadPool::new(n_workers);
+    let pool = Pool::bounded(n_workers);
 
-    let (tx, rx) = channel();
+    let (tx, mut rx) = channel(2 * n_workers);
     let mut n_tasks = 0;
     let mut n_failures = 0;
 
@@ -382,10 +382,13 @@ pub fn process_inputs<'a, P: TexProcessor>(
         let tx = tx.clone();
         let sp = self_path.clone();
 
-        pool.execute(move || {
+        pool.spawn(async move {
             tx.send(process_one_input(driver, sp, item_status))
+                .await
                 .expect("channel waits for pool result");
-        });
+        })
+        .await
+        .expect("failed to launch TeX worker");
         n_tasks += 1;
 
         // Deal with results as we're doing the walk, if there are any.
@@ -422,7 +425,7 @@ pub fn process_inputs<'a, P: TexProcessor>(
 
     drop(tx);
 
-    for result in rx.iter() {
+    while let Some(result) = rx.recv().await {
         let tup = match result {
             Ok(tup) => tup,
 

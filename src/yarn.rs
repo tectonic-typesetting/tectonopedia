@@ -3,7 +3,7 @@
 
 //! Running the `yarn` tool.
 
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, StatusBackend};
 
@@ -70,17 +70,4 @@ pub fn yarn_index(terse_output: bool, status: &mut dyn StatusBackend) -> Result<
 /// Run the `yarn build` command.
 pub fn yarn_build(status: &mut dyn StatusBackend) -> Result<()> {
     do_yarn("build", status)
-}
-
-/// Launch a `yarn serve` command.
-pub fn yarn_serve() -> Result<Child> {
-    let mut cmd = Command::new("yarn");
-    cmd.arg("serve");
-
-    let child = atry!(
-        cmd.spawn();
-        ["failed to spawn `yarn serve` command"]
-    );
-
-    Ok(child)
 }
