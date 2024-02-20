@@ -26,8 +26,12 @@ use std::{
 };
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_error, tt_note, StatusBackend};
+use tokio::task::spawn_blocking;
 
-use crate::{assets, cache, entrypoint_file, index, inputs, pass1, pass2, tex_pass, yarn};
+use crate::{
+    assets, cache, entrypoint_file, index, inputs, operation::RuntimeEntityIdent, pass1, pass2,
+    tex_pass, yarn,
+};
 
 /// The return value is potentially a list of the final outputs that were
 /// modified during this build process, if the boolean argument is true. The
@@ -39,15 +43,21 @@ async fn primary_build_implementation(
     terse_output: bool,
     status: &mut dyn StatusBackend,
 ) -> Result<Vec<String>> {
-    // Set up data structures
+    // Set up data structures. Here the return type of spawn_blocking is
+    // a Result<Result<IndexCollection>, JoinError>, so we have a question-mark
+    // inside of an atry!() operator to decode it.
 
-    let mut indices = index::IndexCollection::new()?;
-
-    atry!(
-        indices.load_user_indices();
+    let mut indices = atry!(
+        spawn_blocking(|| -> Result<index::IndexCollection> {
+            let mut indices = index::IndexCollection::new()?;
+            indices.load_user_indices()?;
+            Ok(indices)
+        }).await?;
         ["failed to load user indices"]
     );
 
+    // TODO: we can't do this in a spawn_blocking() thread since it gets gnarly
+    // to the StatusBackend around.
     let mut cache = atry!(
         cache::Cache::new(&mut indices, status);
         ["error initializing build cache"]
@@ -56,8 +66,11 @@ async fn primary_build_implementation(
     // Collect all of the inputs. With the way that we make the build
     // incremental, it makes the most sense to just put them all in a big vec.
 
-    let inputs = atry!(
-        inputs::collect_inputs(&mut indices);
+    let (inputs, mut indices) = atry!(
+        spawn_blocking(move || -> Result<(Vec<RuntimeEntityIdent>, index::IndexCollection)> {
+            let inputs = inputs::collect_inputs(&mut indices)?;
+            Ok((inputs, indices))
+        }).await?;
         ["failed to scan list of input files"]
     );
 
@@ -88,6 +101,9 @@ async fn primary_build_implementation(
     let (asset_ids, metadata_ids) = p1r.unpack();
 
     // Resolve cross-references and validate.
+    //
+    // TODO: we can't do this in a spawn_blocking() thread since it gets gnarly
+    // to the StatusBackend around.
 
     index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
 
