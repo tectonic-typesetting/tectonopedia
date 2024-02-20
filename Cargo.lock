@@ -2885,6 +2885,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-task-pool",
+ "tokio-util",
  "toml 0.5.11",
  "walkdir",
  "warp",

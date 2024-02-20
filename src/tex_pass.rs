@@ -8,14 +8,15 @@
 //! - Subprocess stderr is passed straight on through for error reporing
 //! - Subprocess stdout is parsed for information transfer
 
-use std::{
-    io::{BufRead, BufReader},
-    path::PathBuf,
-    process::{ChildStdin, Command, Stdio},
-};
+use futures::Future;
+use std::path::PathBuf;
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
-use tokio::sync::mpsc::{channel, error::TryRecvError};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{ChildStdin, Command},
+    sync::mpsc::{channel, error::TryRecvError},
+};
 use tokio_task_pool::Pool;
 
 use crate::{
@@ -146,7 +147,7 @@ pub trait WorkerDriver: Send {
     fn init_command(&self, cmd: &mut Command);
 
     /// Send information to the subcommand over its standard input.
-    fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()>;
+    fn send_stdin(&self, stdin: ChildStdin) -> impl Future<Output = Result<()>> + Send;
 
     /// Process a line of output emitted by the worker process.
     fn process_output_record(&mut self, line: &str, status: &mut dyn StatusBackend);
@@ -159,10 +160,10 @@ pub trait WorkerDriver: Send {
     fn finish(self) -> Result<(OpCacheData, Self::OpInfo), WorkerError<Error>>;
 }
 
-fn process_one_input<W: WorkerDriver>(
+async fn process_one_input<W: WorkerDriver>(
     mut driver: W,
     self_path: PathBuf,
-    mut status: Box<dyn StatusBackend>,
+    mut status: Box<dyn StatusBackend + Send>,
 ) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
     // This function should fully report out any errors that it encounters,
     // since it can only propagate a stateless flag as to whether a "specific"
@@ -170,7 +171,8 @@ fn process_one_input<W: WorkerDriver>(
 
     let mut cmd = Command::new(self_path);
     driver.init_command(&mut cmd);
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped());
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -183,9 +185,9 @@ fn process_one_input<W: WorkerDriver>(
     // First, send input over stdin. It will be closed when we drop the handle.
 
     {
-        let mut stdin = child.stdin.take().unwrap();
+        let stdin = child.stdin.take().unwrap();
 
-        if let Err(e) = driver.send_stdin(&mut stdin) {
+        if let Err(e) = driver.send_stdin(stdin).await {
             tt_error!(status, "failed to send input to TeX worker"; e);
             return Err(WorkerError::Specific(()));
         }
@@ -193,12 +195,14 @@ fn process_one_input<W: WorkerDriver>(
 
     // Now read results from stdout.
 
-    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut error_type = WorkerError::Specific(());
 
-    for line in stdout.lines() {
+    loop {
+        let line = stdout.next_line().await;
+
         match line {
-            Ok(line) => {
+            Ok(Some(line)) => {
                 if let Some(rest) = line.strip_prefix("pedia:") {
                     match rest {
                         "general-error" => {
@@ -213,15 +217,18 @@ fn process_one_input<W: WorkerDriver>(
                 }
             }
 
+            Ok(None) => break,
+
             Err(e) => {
                 tt_warning!(status.as_mut(), "error reading worker stdout"; e.into());
+                break;
             }
         }
     }
 
     // Wait for the process to finish and wrap up.
 
-    let ec = match child.wait() {
+    let ec = match child.wait().await {
         Ok(c) => c,
         Err(e) => {
             tt_error!(status, "failed to wait() for TeX worker"; e.into());
@@ -383,7 +390,7 @@ pub async fn process_inputs<'a, P: TexProcessor>(
         let sp = self_path.clone();
 
         pool.spawn(async move {
-            tx.send(process_one_input(driver, sp, item_status))
+            tx.send(process_one_input(driver, sp, item_status).await)
                 .await
                 .expect("channel waits for pool result");
         })

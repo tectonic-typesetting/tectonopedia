@@ -4,6 +4,7 @@
 //! "Pass 2"
 
 use clap::Args;
+use futures::{future, Future, FutureExt};
 use sha2::Digest;
 use std::{
     collections::HashSet,
@@ -11,7 +12,6 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
-    process::{ChildStdin, Command},
 };
 use string_interner::Symbol;
 use tectonic::{
@@ -24,6 +24,8 @@ use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_engine_spx2html::AssetSpecification;
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::StatusBackend;
+use tokio::process::{ChildStdin, Command};
+use tokio_util::io::SyncIoBridge;
 
 use crate::{
     cache::{Cache, OpCacheData},
@@ -301,9 +303,26 @@ impl WorkerDriver for Pass2Driver {
         cmd.arg("second-pass-impl").arg(&self.input_path);
     }
 
-    fn send_stdin(&self, stdin: &mut ChildStdin) -> Result<()> {
-        writeln!(stdin, "{}\n---", self.resolved_ref_tex)?;
-        self.assets.save(stdin)
+    fn send_stdin(&self, stdin: ChildStdin) -> impl Future<Output = Result<()>> {
+        // We need to bridge the async ChildStdin stream to sync-land here,
+        // because that's what AssetSpecification::save() needs. Fortunately
+        // tokio_util has code to do this. However, because this function is not
+        // async (because we would need async trait methods) we have to buffer
+        // all of the output, because (1) the bridge needs to be used in a
+        // blocking thread and (2) we can't transfer a borrow of `self` to that
+        // thread.
+
+        let mut stdin = SyncIoBridge::new(stdin);
+        let mut buf = Vec::new();
+
+        writeln!(&mut buf, "{}\n---", self.resolved_ref_tex).unwrap();
+        self.assets.save(&mut buf).unwrap();
+
+        tokio::task::spawn_blocking(move || stdin.write_all(&buf)).then(|rr| match rr {
+            Ok(Ok(v)) => future::ok(v),
+            Ok(Err(e)) => future::err(e.into()),
+            Err(e) => future::err(e.into()),
+        })
     }
 
     // TODO: record additional inputs if/when they are detected

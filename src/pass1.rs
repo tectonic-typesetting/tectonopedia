@@ -5,10 +5,10 @@
 
 use clap::Args;
 use digest::Digest;
+use futures::Future;
 use std::{
     io::{BufRead, BufReader, Cursor, Write},
     path::PathBuf,
-    process::{ChildStdin, Command},
 };
 use string_interner::Symbol;
 use tectonic::{
@@ -20,6 +20,7 @@ use tectonic::{
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_warning, StatusBackend};
+use tokio::process::{ChildStdin, Command};
 
 use crate::{
     cache::{Cache, OpCacheData},
@@ -196,8 +197,8 @@ impl WorkerDriver for Pass1Driver {
         cmd.arg("first-pass-impl").arg(&self.input_path);
     }
 
-    fn send_stdin(&self, _stdin: &mut ChildStdin) -> Result<()> {
-        Ok(())
+    fn send_stdin(&self, _stdin: ChildStdin) -> impl Future<Output = Result<()>> {
+        futures::future::ok(())
     }
 
     // TODO: record additional inputs if/when they are detected
