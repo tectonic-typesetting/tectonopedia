@@ -55,7 +55,14 @@ struct ToplevelArgs {
 impl ToplevelArgs {
     fn exec(self, mut status: Box<dyn StatusBackend + Send>) {
         let result = match self.action {
-            Action::Build(a) => a.exec(status.as_mut()),
+            // Here we jump through hoops so that `build` can take ownership of
+            // the status backend; it needs this to pass it around the async
+            // framework.
+            Action::Build(a) => {
+                a.exec(status);
+                return;
+            }
+
             Action::FirstPassImpl(a) => a.exec(status.as_mut()),
             Action::SecondPassImpl(a) => a.exec(status.as_mut()),
             Action::Serve(a) => a.exec(status.as_mut()),

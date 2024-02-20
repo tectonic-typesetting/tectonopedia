@@ -22,6 +22,7 @@ use clap::Args;
 use std::{
     fs,
     io::{ErrorKind, Write},
+    sync::{Arc, Mutex},
     time::Instant,
 };
 use tectonic_errors::{anyhow::Context, prelude::*};
@@ -29,8 +30,9 @@ use tectonic_status_base::{tt_error, tt_note, StatusBackend};
 use tokio::task::spawn_blocking;
 
 use crate::{
-    assets, cache, entrypoint_file, index, inputs, operation::RuntimeEntityIdent, pass1, pass2,
-    tex_pass, yarn,
+    assets, cache, entrypoint_file, index, inputs,
+    operation::{RuntimeEntity, RuntimeEntityIdent},
+    pass1, pass2, tex_pass, yarn,
 };
 
 /// The return value is potentially a list of the final outputs that were
@@ -41,38 +43,40 @@ async fn primary_build_implementation(
     n_workers: usize,
     collect_paths: bool,
     terse_output: bool,
-    status: &mut dyn StatusBackend,
+    status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
 ) -> Result<Vec<String>> {
     // Set up data structures. Here the return type of spawn_blocking is
     // a Result<Result<IndexCollection>, JoinError>, so we have a question-mark
     // inside of an atry!() operator to decode it.
 
-    let mut indices = atry!(
-        spawn_blocking(|| -> Result<index::IndexCollection> {
+    let status_clone = status.clone();
+
+    let (mut indices, mut cache, inputs) =
+        spawn_blocking(move || -> Result<(index::IndexCollection, cache::Cache, Vec<RuntimeEntityIdent>)> {
+            let mut status = status_clone.lock().unwrap();
+
             let mut indices = index::IndexCollection::new()?;
-            indices.load_user_indices()?;
-            Ok(indices)
-        }).await?;
-        ["failed to load user indices"]
-    );
+            atry!(
+                indices.load_user_indices();
+                ["failed to load user indices"]
+            );
 
-    // TODO: we can't do this in a spawn_blocking() thread since it gets gnarly
-    // to the StatusBackend around.
-    let mut cache = atry!(
-        cache::Cache::new(&mut indices, status);
-        ["error initializing build cache"]
-    );
+            let cache = atry!(
+                cache::Cache::new(&mut indices, &mut **status);
+                ["error initializing build cache"]
+            );
 
-    // Collect all of the inputs. With the way that we make the build
-    // incremental, it makes the most sense to just put them all in a big vec.
+            // Collect all of the inputs. With the way that we make the build
+            // incremental, it makes the most sense to just put them all in a big vec.
 
-    let (inputs, mut indices) = atry!(
-        spawn_blocking(move || -> Result<(Vec<RuntimeEntityIdent>, index::IndexCollection)> {
-            let inputs = inputs::collect_inputs(&mut indices)?;
-            Ok((inputs, indices))
-        }).await?;
-        ["failed to scan list of input files"]
-    );
+            let inputs = atry!(
+                inputs::collect_inputs(&mut indices);
+                ["failed to scan list of input files"]
+            );
+
+            Ok((indices, cache, inputs))
+        })
+        .await??;
 
     // First TeX pass of indexing and gathering font/asset information.
 
@@ -83,7 +87,7 @@ async fn primary_build_implementation(
         &mut p1r,
         &mut cache,
         &mut indices,
-        status,
+        &mut **status.lock().unwrap(),
     )
     .await?;
 
@@ -92,53 +96,69 @@ async fn primary_build_implementation(
         let _ignored = std::io::stdout().flush();
     } else {
         tt_note!(
-            status,
+            *status.lock().unwrap(),
             "refreshed TeX pass 1 outputs       - processed {n_processed} of {} inputs",
             inputs.len()
         );
     }
 
-    let (asset_ids, metadata_ids) = p1r.unpack();
+    let status_clone = status.clone();
 
-    // Resolve cross-references and validate.
-    //
-    // TODO: we can't do this in a spawn_blocking() thread since it gets gnarly
-    // to the StatusBackend around.
+    let (metadata_ids, merged_assets_id, mut maybe_modified_output_files, mut indices, mut cache) = spawn_blocking(
+        move || -> Result<(Vec<RuntimeEntityIdent>, RuntimeEntityIdent, Vec<RuntimeEntity>, index::IndexCollection, cache::Cache)> {
+            let mut status = status_clone.lock().unwrap();
 
-    index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, status)?;
+            let (asset_ids, metadata_ids) = p1r.unpack();
 
-    if terse_output {
-        print!(" cross-index");
-        let _ignored = std::io::stdout().flush();
-    } else {
-        tt_note!(
-            status,
-            "refreshed cross indices            - {}",
-            indices.index_summary()
-        );
-    }
+            // Resolve cross-references and validate.
 
-    // Generate the merged asset info and emit the files. Start collecting
-    // information about our outputs that will feed into the Parcel.js build
-    // process, specifically which ones have actually been modified. We use that
-    // for efficient updates in the "watch" mode.
+            index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, &mut **status)?;
 
-    let merged_assets_id =
-        assets::maybe_asset_merge_operation(&mut indices, &asset_ids[..], &mut cache, status)?;
+            if terse_output {
+                print!(" cross-index");
+                let _ignored = std::io::stdout().flush();
+            } else {
+                tt_note!(
+                    status,
+                    "refreshed cross indices            - {}",
+                    indices.index_summary()
+                );
+            }
 
-    if !terse_output {
-        tt_note!(status, "refreshed merged asset description");
-    }
+            // Generate the merged asset info and emit the files. Start collecting
+            // information about our outputs that will feed into the Parcel.js build
+            // process, specifically which ones have actually been modified. We use that
+            // for efficient updates in the "watch" mode.
 
-    let mut maybe_modified_output_files =
-        assets::maybe_emit_assets_operation(merged_assets_id, &mut cache, &mut indices, status)?;
+            let merged_assets_id = assets::maybe_asset_merge_operation(
+                &mut indices,
+                &asset_ids[..],
+                &mut cache,
+                &mut **status,
+            )?;
 
-    if terse_output {
-        print!(" assets");
-        let _ignored = std::io::stdout().flush();
-    } else {
-        tt_note!(status, "refreshed HTML support assets");
-    }
+            if !terse_output {
+                tt_note!(status, "refreshed merged asset description");
+            }
+
+            let maybe_modified_output_files = assets::maybe_emit_assets_operation(
+                merged_assets_id,
+                &mut cache,
+                &mut indices,
+                &mut **status,
+            )?;
+
+            if terse_output {
+                print!(" assets");
+                let _ignored = std::io::stdout().flush();
+            } else {
+                tt_note!(status, "refreshed HTML support assets");
+            }
+
+            Ok((metadata_ids, merged_assets_id, maybe_modified_output_files, indices, cache))
+        },
+    )
+    .await??;
 
     // TeX pass 2, emitting
 
@@ -149,7 +169,7 @@ async fn primary_build_implementation(
         &mut p2r,
         &mut cache,
         &mut indices,
-        status,
+        &mut **status.lock().unwrap(),
     )
     .await?;
     let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
@@ -159,42 +179,57 @@ async fn primary_build_implementation(
         let _ignored = std::io::stdout().flush();
     } else {
         tt_note!(
-            status,
+            *status.lock().unwrap(),
             "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
         );
     }
 
     maybe_modified_output_files.append(&mut p2r.into_potential_modified_outputs());
 
-    // Generate the entrypoint file, and start generating the list of output
-    // files that actually *were* modified. Unlike the TeX pass 2 and assets
-    // steps, it's convenient for the entrypoint stage to figure out whether the
-    // output actually changed or not.
+    let status_clone = status.clone();
 
-    let mut modified_output_files = Vec::new();
+    let (modified_output_files, indices) = spawn_blocking(
+        move || -> Result<(Vec<RuntimeEntityIdent>, index::IndexCollection)> {
+            let mut status = status_clone.lock().unwrap();
 
-    let id = entrypoint_file::maybe_make_entrypoint_operation(&mut cache, &mut indices, status)?;
+            // Generate the entrypoint file, and start generating the list of output
+            // files that actually *were* modified. Unlike the TeX pass 2 and assets
+            // steps, it's convenient for the entrypoint stage to figure out whether the
+            // output actually changed or not.
 
-    if terse_output {
-        print!(" entrypoint");
-        let _ignored = std::io::stdout().flush();
-    } else {
-        tt_note!(status, "refreshed entrypoint file");
-    }
+            let mut modified_output_files = Vec::new();
 
-    if let Some(id) = id {
-        modified_output_files.push(id);
-    }
+            let id = entrypoint_file::maybe_make_entrypoint_operation(
+                &mut cache,
+                &mut indices,
+                &mut **status,
+            )?;
 
-    // Figure out which of the other outputs have been modified.
+            if terse_output {
+                print!(" entrypoint");
+                let _ignored = std::io::stdout().flush();
+            } else {
+                tt_note!(status, "refreshed entrypoint file");
+            }
 
-    for output in maybe_modified_output_files.drain(..) {
-        let updated = cache.require_entity(output.ident, &indices)?;
+            if let Some(id) = id {
+                modified_output_files.push(id);
+            }
 
-        if updated.value_digest != output.value_digest {
-            modified_output_files.push(output.ident);
-        }
-    }
+            // Figure out which of the other outputs have been modified.
+
+            for output in maybe_modified_output_files.drain(..) {
+                let updated = cache.require_entity(output.ident, &indices)?;
+
+                if updated.value_digest != output.value_digest {
+                    modified_output_files.push(output.ident);
+                }
+            }
+
+            Ok((modified_output_files, indices))
+        },
+    )
+    .await??;
 
     // TODO: rewrite the cache file state info!!!
 
@@ -220,7 +255,7 @@ async fn build_through_index(
     do_rename: bool,
     collect_paths: bool,
     terse_output: bool,
-    status: &mut dyn StatusBackend,
+    status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
 
@@ -242,6 +277,8 @@ async fn build_through_index(
                 Ok(_) => {}
 
                 Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
+                    let mut status = status.lock().unwrap();
+
                     tt_error!(
                         status,
                         "failed to create directory `staging` - it already exists"
@@ -265,7 +302,10 @@ async fn build_through_index(
     // Main build.
 
     let modified_files =
-        primary_build_implementation(n_workers, collect_paths, terse_output, status).await?;
+        primary_build_implementation(n_workers, collect_paths, terse_output, status.clone())
+            .await?;
+
+    let status = &mut **status.lock().unwrap();
 
     if !terse_output {
         tt_note!(
@@ -305,22 +345,34 @@ pub struct BuildArgs {
 impl BuildArgs {
     /// In the "build" op, we do the main build, then just cap it off with a
     /// `yarn build` and we're done.
-    pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+    pub fn exec(self, status: Box<dyn StatusBackend + Send>) {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(self.inner(status))
+            .block_on(self.inner(status));
     }
 
-    async fn inner(self, status: &mut dyn StatusBackend) -> Result<()> {
+    async fn inner(self, status: Box<dyn StatusBackend + Send>) {
+        let status = Arc::new(Mutex::new(status));
+        let result = self.double_inner(status.clone()).await;
+        let status = &mut **status.lock().unwrap();
+
+        if let Err(e) = result {
+            status.report_error(&e);
+            std::process::exit(1)
+        }
+    }
+
+    async fn double_inner(self, status: Arc<Mutex<Box<dyn StatusBackend + Send>>>) -> Result<()> {
         let n_workers = if self.parallel > 0 {
             self.parallel
         } else {
             num_cpus::get()
         };
 
-        let (t0, _) = build_through_index(n_workers, true, false, false, status).await?;
+        let (t0, _) = build_through_index(n_workers, true, false, false, status.clone()).await?;
+        let status = &mut **status.lock().unwrap();
 
         atry!(
             yarn::yarn_build(status);
