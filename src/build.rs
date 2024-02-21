@@ -31,7 +31,7 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     assets, cache, entrypoint_file, index, inputs,
-    messages::{CliStatusMessageBus, MessageBus},
+    messages::{BuildCompleteMessage, CliStatusMessageBus, Message, MessageBus},
     operation::{RuntimeEntity, RuntimeEntityIdent},
     pass1, pass2, tex_pass, yarn,
 };
@@ -370,7 +370,7 @@ impl BuildArgs {
     async fn double_inner(
         self,
         status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
-        bus: CliStatusMessageBus,
+        mut bus: CliStatusMessageBus,
     ) -> Result<()> {
         let n_workers = if self.parallel > 0 {
             self.parallel
@@ -379,19 +379,18 @@ impl BuildArgs {
         };
 
         let (t0, _) =
-            build_through_index(n_workers, true, false, false, status.clone(), bus).await?;
-        let status = &mut **status.lock().unwrap();
+            build_through_index(n_workers, true, false, false, status.clone(), bus.clone()).await?;
 
         atry!(
-            yarn::yarn_build(status);
+            yarn::yarn_build(&mut **status.lock().unwrap());
             ["failed to generate production files"]
         );
 
-        tt_note!(
-            status,
-            "full build took {:.1} seconds",
-            t0.elapsed().as_secs_f32()
-        );
+        bus.post(&Message::BuildComplete(BuildCompleteMessage {
+            elapsed: t0.elapsed().as_secs_f32(),
+        }))
+        .await;
+
         Ok(())
     }
 }

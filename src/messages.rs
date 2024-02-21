@@ -7,7 +7,7 @@
 //! to update the user on how the build is going.
 
 use std::sync::{Arc, Mutex};
-use tectonic_status_base::StatusBackend;
+use tectonic_status_base::{tt_note, StatusBackend};
 
 /// A trait for types that can distribute messages
 pub trait MessageBus: Clone + Send {
@@ -18,8 +18,15 @@ pub trait MessageBus: Clone + Send {
 #[serde(rename_all = "snake_case")]
 pub enum Message {
     BuildStarted,
+    BuildComplete(BuildCompleteMessage),
     YarnOutput(YarnOutputMessage),
     ServerQuitting,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct BuildCompleteMessage {
+    pub elapsed: f32,
 }
 
 #[derive(serde::Serialize)]
@@ -40,7 +47,6 @@ pub enum ToolOutputStream {
 /// to report status updates in a way fitting for CLI usage.
 #[derive(Clone)]
 pub struct CliStatusMessageBus {
-    #[allow(dead_code)]
     status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
 }
 
@@ -63,7 +69,17 @@ impl CliStatusMessageBus {
 }
 
 impl MessageBus for CliStatusMessageBus {
-    async fn post(&mut self, _msg: &Message) {
-        // TODO: display some messages
+    async fn post(&mut self, msg: &Message) {
+        match msg {
+            Message::BuildComplete(d) => {
+                tt_note!(
+                    self.status.lock().unwrap(),
+                    "full build took {:.1} seconds",
+                    d.elapsed
+                );
+            }
+
+            _ => {}
+        }
     }
 }
