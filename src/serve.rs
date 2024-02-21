@@ -24,37 +24,17 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{
-    ws::{Message, WebSocket},
+    ws::{Message as WsMessage, WebSocket},
     Filter, Rejection, Reply,
 };
+
+use crate::messages::{Message, MessageBus, ToolOutputStream, YarnOutputMessage};
 
 /// The serve operation.
 #[derive(Args, Debug)]
 pub struct ServeArgs {
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-enum ClientMessage {
-    BuildStarted,
-    YarnOutput(YarnOutputMessage),
-    ServerQuitting,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-struct YarnOutputMessage {
-    stream: ToolOutputStream,
-    lines: Vec<String>,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-enum ToolOutputStream {
-    Stdout,
-    Stderr,
 }
 
 /// A message to be delivered to the main "serve" thread.
@@ -107,13 +87,14 @@ impl ServeArgs {
 
         // Set up the build-UI server
 
-        let mut warp_state: WarpState =
-            Arc::new(Mutex::new(WarpStateInner::new(command_tx.clone())));
+        let mut clients: WarpClientCollection = Arc::new(Mutex::new(Vec::new()));
+
+        let warp_state: WarpState = Arc::new(Mutex::new(WarpStateInner::new(command_tx.clone())));
 
         let ws_route = warp::path("ws")
             .and(warp::path::end())
             .and(warp::ws())
-            .and(with_warp_state(warp_state.clone()))
+            .and(with_warp_state(clients.clone(), warp_state.clone()))
             .and_then(ws_handler);
 
         let static_route = warp::fs::dir("serve-ui/dist").map(|reply: warp::filters::fs::File| {
@@ -144,8 +125,7 @@ impl ServeArgs {
         // Set up `yarn serve` for the app
 
         let (yarn_quit_tx, yarn_quit_rx) = oneshot::channel();
-        let yarn_server =
-            YarnServer::new(1234, yarn_quit_rx, command_tx.clone(), warp_state.clone())?;
+        let yarn_server = YarnServer::new(1234, yarn_quit_rx, command_tx.clone(), clients.clone())?;
 
         // Signal handling
 
@@ -203,7 +183,7 @@ impl ServeArgs {
 
                             ServeCommand::Build => {
                                 println!("Should build now.");
-                                notify_clients(&mut warp_state, &ClientMessage::BuildStarted).await;
+                                clients.post(&Message::BuildStarted).await;
                             }
                         }
                     } else {
@@ -234,7 +214,7 @@ impl ServeArgs {
 
         // Shutdown
 
-        notify_clients(&mut warp_state, &ClientMessage::ServerQuitting).await;
+        clients.post(&Message::ServerQuitting).await;
 
         if let Err(_) = yarn_quit_tx.send(()) {
             eprintln!("error: failed to send shutdown signal to the `yarn serve` subprocess");
@@ -272,50 +252,56 @@ impl ServeArgs {
     }
 }
 
-// The webserver for the build/watch UI
+// The message bus for Warp-powered ebsocket clients
 
 struct Client {
-    pub sender: mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>,
+    pub sender: mpsc::UnboundedSender<std::result::Result<WsMessage, warp::Error>>,
 }
 
+type WarpClientCollection = Arc<Mutex<Vec<Client>>>;
+
+impl MessageBus for WarpClientCollection {
+    async fn post(&mut self, msg: &Message) {
+        let ws_msg = WsMessage::text(serde_json::to_string(msg).unwrap());
+
+        for c in &*self.lock().await {
+            // Assume that failure is a disconnected client; just ignore it??
+            let _ = c.sender.send(Ok(ws_msg.clone()));
+        }
+    }
+}
+
+// The webserver for the build/watch UI
+
 struct WarpStateInner {
-    clients: Vec<Client>,
     command_tx: mpsc::Sender<ServeCommand>,
 }
 
 impl WarpStateInner {
     pub fn new(command_tx: mpsc::Sender<ServeCommand>) -> Self {
-        WarpStateInner {
-            clients: Vec::new(),
-            command_tx,
-        }
+        WarpStateInner { command_tx }
     }
 }
 
 type WarpState = Arc<Mutex<WarpStateInner>>;
 
 fn with_warp_state(
+    clients: WarpClientCollection,
     warp_state: WarpState,
-) -> impl Filter<Extract = (WarpState,), Error = Infallible> + Clone {
-    warp::any().map(move || warp_state.clone())
-}
-
-async fn notify_clients(state: &mut WarpState, msg: &ClientMessage) {
-    let ws_msg = Message::text(serde_json::to_string(msg).unwrap());
-
-    for c in &*state.lock().await.clients {
-        // Assume that failure is a disconnected client; just ignore it??
-        let _ = c.sender.send(Ok(ws_msg.clone()));
-    }
+) -> impl Filter<Extract = ((WarpClientCollection, WarpState),), Error = Infallible> + Clone {
+    warp::any().map(move || (clients.clone(), warp_state.clone()))
 }
 
 type WarpResult<T> = std::result::Result<T, Rejection>;
 
-async fn ws_handler(ws: warp::ws::Ws, warp_state: WarpState) -> WarpResult<impl Reply> {
-    Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, warp_state)))
+async fn ws_handler(
+    ws: warp::ws::Ws,
+    (clients, warp_state): (WarpClientCollection, WarpState),
+) -> WarpResult<impl Reply> {
+    Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, clients, warp_state)))
 }
 
-async fn ws_client_connection(ws: WebSocket, warp_state: WarpState) {
+async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp_state: WarpState) {
     // The outbound and inbound sides of the websocket.
     let (client_ws_tx, mut client_ws_rx) = ws.split();
 
@@ -323,15 +309,9 @@ async fn ws_client_connection(ws: WebSocket, warp_state: WarpState) {
     let (client_outbound_tx, client_outbound_rx) = mpsc::unbounded_channel();
 
     // Record this client
-    let command_tx = {
-        let mut state = warp_state.lock().await;
-
-        state.clients.push(Client {
-            sender: client_outbound_tx,
-        });
-
-        state.command_tx.clone()
-    };
+    clients.lock().await.push(Client {
+        sender: client_outbound_tx,
+    });
 
     // Spawn a task that just hangs out forwarding messages from the channel to
     // the WS client.
@@ -344,6 +324,8 @@ async fn ws_client_connection(ws: WebSocket, warp_state: WarpState) {
     }));
 
     // Meanwhile, we spend the rest of our time listening for client messages
+
+    let command_tx = warp_state.lock().await.command_tx.clone();
 
     while let Some(result) = client_ws_rx.next().await {
         let msg = match result {
@@ -397,7 +379,7 @@ struct YarnServer {
     child: Child,
     quit_rx: oneshot::Receiver<()>,
     command_tx: mpsc::Sender<ServeCommand>,
-    warp_state: WarpState,
+    clients: WarpClientCollection,
 }
 
 impl YarnServer {
@@ -405,7 +387,7 @@ impl YarnServer {
         port: u16,
         quit_rx: oneshot::Receiver<()>,
         command_tx: mpsc::Sender<ServeCommand>,
-        warp_state: WarpState,
+        clients: WarpClientCollection,
     ) -> Result<Self> {
         let mut cmd = Command::new("yarn");
         cmd.arg("serve")
@@ -424,7 +406,7 @@ impl YarnServer {
             child,
             quit_rx,
             command_tx,
-            warp_state,
+            clients,
         })
     }
 
@@ -454,7 +436,7 @@ impl YarnServer {
                 line = stdout_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            notify_clients(&mut self.warp_state, &ClientMessage::YarnOutput(YarnOutputMessage {
+                            self.clients.post(&Message::YarnOutput(YarnOutputMessage {
                                 stream: ToolOutputStream::Stdout,
                                 lines: vec![line],
                             })).await;
@@ -471,7 +453,7 @@ impl YarnServer {
                 line = stderr_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            notify_clients(&mut self.warp_state, &ClientMessage::YarnOutput(YarnOutputMessage {
+                            self.clients.post(&Message::YarnOutput(YarnOutputMessage {
                                 stream: ToolOutputStream::Stderr,
                                 lines: vec![line],
                             })).await;

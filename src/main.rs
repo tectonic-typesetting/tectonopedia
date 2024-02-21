@@ -13,6 +13,7 @@ mod entrypoint_file;
 mod holey_vec;
 mod index;
 mod inputs;
+mod messages;
 mod metadata;
 mod multivec;
 mod operation;

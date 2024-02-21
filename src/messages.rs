@@ -6,6 +6,11 @@
 //! These messages are used by the "watch UI" and `build` CLI
 //! to update the user on how the build is going.
 
+/// A trait for types that can distribute messages
+pub trait MessageBus: Clone + Send {
+    async fn post(&mut self, msg: &Message);
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Message {
