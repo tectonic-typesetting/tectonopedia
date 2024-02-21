@@ -31,6 +31,7 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     assets, cache, entrypoint_file, index, inputs,
+    messages::{CliStatusMessageBus, MessageBus},
     operation::{RuntimeEntity, RuntimeEntityIdent},
     pass1, pass2, tex_pass, yarn,
 };
@@ -250,12 +251,13 @@ async fn primary_build_implementation(
     Ok(paths)
 }
 
-async fn build_through_index(
+async fn build_through_index<T: MessageBus>(
     n_workers: usize,
     do_rename: bool,
     collect_paths: bool,
     terse_output: bool,
     status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
+    _bus: T,
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
 
@@ -355,7 +357,8 @@ impl BuildArgs {
 
     async fn inner(self, status: Box<dyn StatusBackend + Send>) {
         let status = Arc::new(Mutex::new(status));
-        let result = self.double_inner(status.clone()).await;
+        let bus = CliStatusMessageBus::new_scaffold(status.clone());
+        let result = self.double_inner(status.clone(), bus).await;
         let status = &mut **status.lock().unwrap();
 
         if let Err(e) = result {
@@ -364,14 +367,19 @@ impl BuildArgs {
         }
     }
 
-    async fn double_inner(self, status: Arc<Mutex<Box<dyn StatusBackend + Send>>>) -> Result<()> {
+    async fn double_inner(
+        self,
+        status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
+        bus: CliStatusMessageBus,
+    ) -> Result<()> {
         let n_workers = if self.parallel > 0 {
             self.parallel
         } else {
             num_cpus::get()
         };
 
-        let (t0, _) = build_through_index(n_workers, true, false, false, status.clone()).await?;
+        let (t0, _) =
+            build_through_index(n_workers, true, false, false, status.clone(), bus).await?;
         let status = &mut **status.lock().unwrap();
 
         atry!(

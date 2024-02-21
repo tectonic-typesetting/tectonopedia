@@ -253,7 +253,7 @@ impl ServeArgs {
     }
 }
 
-// The message bus for Warp-powered ebsocket clients
+// The message bus for Warp-powered websocket clients
 
 struct Client {
     pub sender: mpsc::UnboundedSender<std::result::Result<WsMessage, warp::Error>>,
