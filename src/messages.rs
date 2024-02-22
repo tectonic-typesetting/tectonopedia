@@ -30,6 +30,12 @@ pub enum Message {
     /// name for the build phase.
     PhaseStarted(String),
 
+    /// Some kind of sub-command is being invoked as part of the tool process.
+    /// The string value is the command in shell-like syntax; it is only
+    /// informational, so we don't try to convey its arguments in full
+    /// correctness.
+    CommandLaunched(String),
+
     /// An error has been encountered during the build. These errors are not
     /// related to the TeX compilation and so are not associated with any
     /// particular input file.
@@ -101,6 +107,10 @@ impl CliStatusMessageBus {
 impl MessageBus for CliStatusMessageBus {
     async fn post(&mut self, msg: &Message) {
         match msg {
+            Message::CommandLaunched(d) => {
+                tt_note!(self.status.lock().unwrap(), "running `{d}`");
+            }
+
             Message::BuildComplete(d) => {
                 tt_note!(
                     self.status.lock().unwrap(),
@@ -115,7 +125,7 @@ impl MessageBus for CliStatusMessageBus {
                 tt_error!(s, "{}", d.message);
 
                 for c in &d.context[..] {
-                    tt_error!(s, "  {}", c);
+                    tt_error!(s, "  {c}");
                 }
             }
 

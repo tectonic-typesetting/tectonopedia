@@ -313,17 +313,10 @@ async fn build_through_index<T: MessageBus>(
         ["failed to rename `staging` to `build`"]
     );
 
-    let status = &mut **status.lock().unwrap();
-
     atry!(
-        yarn::yarn_index(terse_output, status);
+        yarn::yarn_index(bus).await;
         ["failed to generate fulltext index"]
     );
-
-    if terse_output {
-        print!(" index-text");
-        let _ignored = std::io::stdout().flush();
-    }
 
     Ok((t0, modified_files))
 }
@@ -375,7 +368,7 @@ impl BuildArgs {
         bus.post(&Message::PhaseStarted("yarn-build".into())).await;
 
         atry!(
-            yarn::yarn_build(&mut **status.lock().unwrap());
+            yarn::yarn_build(bus.clone()).await;
             ["failed to generate production files"]
         );
 
