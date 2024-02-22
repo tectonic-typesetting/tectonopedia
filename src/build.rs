@@ -26,12 +26,12 @@ use std::{
     time::Instant,
 };
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_error, tt_note, StatusBackend};
+use tectonic_status_base::{tt_note, StatusBackend};
 use tokio::task::spawn_blocking;
 
 use crate::{
     assets, cache, entrypoint_file, index, inputs,
-    messages::{BuildCompleteMessage, CliStatusMessageBus, Message, MessageBus},
+    messages::{BuildCompleteMessage, CliStatusMessageBus, ErrorMessage, Message, MessageBus},
     operation::{RuntimeEntity, RuntimeEntityIdent},
     pass1, pass2, tex_pass, yarn,
 };
@@ -253,52 +253,49 @@ async fn primary_build_implementation(
 
 async fn build_through_index<T: MessageBus>(
     n_workers: usize,
-    do_rename: bool,
     collect_paths: bool,
     terse_output: bool,
     status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
-    _bus: T,
+    mut bus: T,
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
 
     // "Claim" the existing build tree to enable an incremental build,
     // or create a new one from scratch if needed.
 
-    if do_rename {
-        match fs::rename("build", "staging") {
-            // Success - we will do a nice incremental build
-            //
-            // On Unix this operation will succeed if `staging` exists but is
-            // empty; the empty directory will be replaced. There is an unstable
-            // ErrorKind::DirectoryNotEmpty that could indicate when it is *not*
-            // empty, which would suggest a clash of builds.
+    bus.post(&Message::PhaseStarted("claim-tree".into())).await;
+
+    match fs::rename("build", "staging") {
+        // Success - we will do a nice incremental build
+        //
+        // On Unix this operation will succeed if `staging` exists but is
+        // empty; the empty directory will be replaced. There is an unstable
+        // ErrorKind::DirectoryNotEmpty that could indicate when it is *not*
+        // empty, which would suggest a clash of builds.
+        Ok(_) => {}
+
+        // No existing build; we'll start from scratch.
+        Err(ref e) if e.kind() == ErrorKind::NotFound => match fs::create_dir("staging") {
             Ok(_) => {}
 
-            // No existing build; we'll start from scratch.
-            Err(ref e) if e.kind() == ErrorKind::NotFound => match fs::create_dir("staging") {
-                Ok(_) => {}
+            Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
+                // TODO: add a --force option and/or a `clean` subcommand
+                bus.post(&Message::Error(ErrorMessage {
+                    message: "failed to create directory `staging` - it already exists".into(),
+                    context: vec![
+                        "is another \"build\" or \"serve\" process running?".into(),
+                        "if not, remove the directory and try again".into(),
+                    ],
+                }))
+                .await;
+                bail!("cannot proceed with build");
+            }
 
-                Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
-                    let mut status = status.lock().unwrap();
+            Err(e) => return Err(e).context("failed to create directory `staging`".to_string()),
+        },
 
-                    tt_error!(
-                        status,
-                        "failed to create directory `staging` - it already exists"
-                    );
-                    tt_error!(status, "is another \"build\" or \"watch\" process running?");
-                    // TODO: add a --force option and/or a `clean` subcommand
-                    tt_error!(status, "if not, remove the directory and try again");
-                    bail!("cannot proceed with build");
-                }
-
-                Err(e) => {
-                    return Err(e).context("failed to create directory `staging`".to_string())
-                }
-            },
-
-            // Some other problem - bail.
-            Err(e) => return Err(e).context("failed to rename `build` to `staging`".to_string()),
-        }
+        // Some other problem - bail.
+        Err(e) => return Err(e).context("failed to rename `build` to `staging`".to_string()),
     }
 
     // Main build.
@@ -307,22 +304,16 @@ async fn build_through_index<T: MessageBus>(
         primary_build_implementation(n_workers, collect_paths, terse_output, status.clone())
             .await?;
 
-    let status = &mut **status.lock().unwrap();
-
-    if !terse_output {
-        tt_note!(
-            status,
-            "primary build took {:.1} seconds",
-            t0.elapsed().as_secs_f32()
-        );
-    }
-
     // De-stage for `yarn` ops and make the fulltext index.
+
+    bus.post(&Message::PhaseStarted("index-text".into())).await;
 
     atry!(
         fs::rename("staging", "build");
         ["failed to rename `staging` to `build`"]
     );
+
+    let status = &mut **status.lock().unwrap();
 
     atry!(
         yarn::yarn_index(terse_output, status);
@@ -379,7 +370,9 @@ impl BuildArgs {
         };
 
         let (t0, _) =
-            build_through_index(n_workers, true, false, false, status.clone(), bus.clone()).await?;
+            build_through_index(n_workers, false, false, status.clone(), bus.clone()).await?;
+
+        bus.post(&Message::PhaseStarted("yarn-build".into())).await;
 
         atry!(
             yarn::yarn_build(&mut **status.lock().unwrap());
@@ -387,6 +380,7 @@ impl BuildArgs {
         );
 
         bus.post(&Message::BuildComplete(BuildCompleteMessage {
+            success: true,
             elapsed: t0.elapsed().as_secs_f32(),
         }))
         .await;
