@@ -40,17 +40,19 @@ use crate::{
 /// modified during this build process, if the boolean argument is true. The
 /// list may be empty if nothing actually changed, or if the argument is false.
 /// This list is used in "watch" mode to efficiently update Parcel.js.
-async fn primary_build_implementation(
+async fn primary_build_implementation<T: MessageBus>(
     n_workers: usize,
     collect_paths: bool,
     terse_output: bool,
     status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
+    mut bus: T,
 ) -> Result<Vec<String>> {
-    // Set up data structures. Here the return type of spawn_blocking is
-    // a Result<Result<IndexCollection>, JoinError>, so we have a question-mark
-    // inside of an atry!() operator to decode it.
+    // Set up data structures. Here the return type of spawn_blocking is a
+    // Result<Result<IndexCollection>, JoinError>, so we have to double-unwrap
+    // it.
 
     let status_clone = status.clone();
+    bus.post(&Message::PhaseStarted("setup".into())).await;
 
     let (mut indices, mut cache, inputs) =
         spawn_blocking(move || -> Result<(index::IndexCollection, cache::Cache, Vec<RuntimeEntityIdent>)> {
@@ -80,6 +82,8 @@ async fn primary_build_implementation(
         .await??;
 
     // First TeX pass of indexing and gathering font/asset information.
+
+    bus.post(&Message::PhaseStarted("pass-1".into())).await;
 
     let mut p1r = pass1::Pass1Processor::default();
     let n_processed = tex_pass::process_inputs(
@@ -162,6 +166,8 @@ async fn primary_build_implementation(
     .await??;
 
     // TeX pass 2, emitting
+
+    bus.post(&Message::PhaseStarted("pass-2".into())).await;
 
     let mut p2r = pass2::Pass2Processor::new(metadata_ids, merged_assets_id, &indices)?;
     tex_pass::process_inputs(
@@ -300,9 +306,14 @@ async fn build_through_index<T: MessageBus>(
 
     // Main build.
 
-    let modified_files =
-        primary_build_implementation(n_workers, collect_paths, terse_output, status.clone())
-            .await?;
+    let modified_files = primary_build_implementation(
+        n_workers,
+        collect_paths,
+        terse_output,
+        status.clone(),
+        bus.clone(),
+    )
+    .await?;
 
     // De-stage for `yarn` ops and make the fulltext index.
 

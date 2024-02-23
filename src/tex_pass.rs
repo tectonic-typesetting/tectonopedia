@@ -470,7 +470,7 @@ fn process_input_finish<P: TexProcessor>(
 ) {
     proc.accumulate_output(item, true);
 
-    // Since any failure only involves the caching step, not the actaul build
+    // Since any failure only involves the caching step, not the actual build
     // operation, we'll report it but not flag the error at a higher level.
     if let Err(e) = cache.finalize_operation(ocd, indices) {
         tt_error!(status, "failed to save caching information for a build step"; e);
