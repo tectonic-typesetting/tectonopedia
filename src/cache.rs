@@ -24,7 +24,6 @@ use tempfile::NamedTempFile;
 use crate::{
     config,
     index::IndexCollection,
-    messages::SyncMessageBusSender,
     operation::{
         DigestComputer, DigestData, PersistEntity, PersistEntityIdent, RuntimeEntity,
         RuntimeEntityIdent,
@@ -157,7 +156,7 @@ impl Cache {
     /// cached information is simply missing. Hopefully this keep things robust
     /// if anything funny happens, although the user can always blow away the
     /// entire cache instead.
-    pub fn new(indices: &mut IndexCollection, sbus: &mut SyncMessageBusSender) -> Result<Self> {
+    pub fn new(indices: &mut IndexCollection, status: &mut dyn StatusBackend) -> Result<Self> {
         let root = config::get_root()?;
 
         let mut cache = Cache {
@@ -182,10 +181,7 @@ impl Cache {
                     Ok(pf) => pf,
 
                     Err(e) => {
-                        sbus.warn(
-                            format!("error deserializing file data in `{}`", p_files.display()),
-                            Some(e.into()),
-                        );
+                        tt_warning!(status, "error deserializing file data in `{}`", p_files.display(); e.into());
                         Vec::new()
                     }
                 },

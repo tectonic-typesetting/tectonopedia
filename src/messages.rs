@@ -8,7 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 use tectonic_errors::Error;
-use tectonic_status_base::{tt_error, tt_note, StatusBackend};
+use tectonic_status_base::{tt_error, tt_note, MessageKind, StatusBackend};
 use tokio::sync::mpsc;
 
 /// A trait for types that can distribute messages
@@ -38,15 +38,20 @@ pub enum Message {
     /// correctness.
     CommandLaunched(String),
 
-    /// An error has been encountered during the build. These errors are not
-    /// related to the TeX compilation and so are not associated with any
+    /// A notable event has been encountered during the build. These notes are
+    /// not related to the TeX compilation and so are not associated with any
     /// particular input file.
-    Error(AlertMessage),
+    Note(AlertMessage),
 
     /// A warning has been encountered during the build. These warnings are not
     /// related to the TeX compilation and so are not associated with any
     /// particular input file.
     Warning(AlertMessage),
+
+    /// An error has been encountered during the build. These errors are not
+    /// related to the TeX compilation and so are not associated with any
+    /// particular input file.
+    Error(AlertMessage),
 
     /// Output from the `yarn serve` program has been received.
     YarnOutput(YarnOutputMessage),
@@ -149,10 +154,12 @@ impl SyncMessageBusSender {
     pub fn post(&mut self, msg: Message) {
         self.tx.blocking_send(msg).unwrap();
     }
+}
 
-    pub fn warn<T: ToString>(&mut self, message: T, err: Option<Error>) {
+impl StatusBackend for SyncMessageBusSender {
+    fn report(&mut self, kind: MessageKind, args: std::fmt::Arguments<'_>, err: Option<&Error>) {
         let mut alert = AlertMessage {
-            message: message.to_string(),
+            message: format!("{}", args),
             context: Default::default(),
         };
 
@@ -162,7 +169,20 @@ impl SyncMessageBusSender {
             }
         }
 
-        self.post(Message::Warning(alert))
+        let msg = match kind {
+            MessageKind::Note => Message::Note(alert),
+            MessageKind::Warning => Message::Warning(alert),
+            MessageKind::Error => Message::Error(alert),
+        };
+
+        self.post(msg)
+    }
+
+    fn dump_error_logs(&mut self, _output: &[u8]) {
+        self.post(Message::Error(AlertMessage {
+            message: "(internal error: TeX error log should not get here)".into(),
+            context: Default::default(),
+        }));
     }
 }
 

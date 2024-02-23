@@ -93,7 +93,7 @@ async fn primary_build_implementation<T: MessageBus>(
     bus.post(&Message::PhaseStarted("pass-1".into())).await;
 
     let mut p1r = pass1::Pass1Processor::default();
-    let n_processed = tex_pass::process_inputs(
+    let _n_processed = tex_pass::process_inputs(
         &inputs,
         n_workers,
         &mut p1r,
@@ -103,39 +103,15 @@ async fn primary_build_implementation<T: MessageBus>(
     )
     .await?;
 
-    if terse_output {
-        print!("pass1");
-        let _ignored = std::io::stdout().flush();
-    } else {
-        tt_note!(
-            *status.lock().unwrap(),
-            "refreshed TeX pass 1 outputs       - processed {n_processed} of {} inputs",
-            inputs.len()
-        );
-    }
+    let (mut bus_tx, bus_rx) = new_sync_bus_channel();
 
-    let status_clone = status.clone();
-
-    let (metadata_ids, merged_assets_id, mut maybe_modified_output_files, mut indices, mut cache) = spawn_blocking(
+    let handle = spawn_blocking(
         move || -> Result<(Vec<RuntimeEntityIdent>, RuntimeEntityIdent, Vec<RuntimeEntity>, index::IndexCollection, cache::Cache)> {
-            let mut status = status_clone.lock().unwrap();
-
             let (asset_ids, metadata_ids) = p1r.unpack();
 
             // Resolve cross-references and validate.
 
-            index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, &mut **status)?;
-
-            if terse_output {
-                print!(" cross-index");
-                let _ignored = std::io::stdout().flush();
-            } else {
-                tt_note!(
-                    status,
-                    "refreshed cross indices            - {}",
-                    indices.index_summary()
-                );
-            }
+            index::construct_indices(&mut indices, &metadata_ids[..], &mut cache, &mut bus_tx)?;
 
             // Generate the merged asset info and emit the files. Start collecting
             // information about our outputs that will feed into the Parcel.js build
@@ -146,31 +122,23 @@ async fn primary_build_implementation<T: MessageBus>(
                 &mut indices,
                 &asset_ids[..],
                 &mut cache,
-                &mut **status,
+                &mut bus_tx,
             )?;
-
-            if !terse_output {
-                tt_note!(status, "refreshed merged asset description");
-            }
 
             let maybe_modified_output_files = assets::maybe_emit_assets_operation(
                 merged_assets_id,
                 &mut cache,
                 &mut indices,
-                &mut **status,
+                &mut bus_tx,
             )?;
-
-            if terse_output {
-                print!(" assets");
-                let _ignored = std::io::stdout().flush();
-            } else {
-                tt_note!(status, "refreshed HTML support assets");
-            }
 
             Ok((metadata_ids, merged_assets_id, maybe_modified_output_files, indices, cache))
         },
-    )
-    .await??;
+    );
+
+    bus_rx.drain(bus.clone()).await;
+    let (metadata_ids, merged_assets_id, mut maybe_modified_output_files, mut indices, mut cache) =
+        handle.await??;
 
     // TeX pass 2, emitting
 
