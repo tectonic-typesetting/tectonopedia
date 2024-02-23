@@ -22,6 +22,7 @@ use tokio_task_pool::Pool;
 use crate::{
     cache::{Cache, OpCacheData},
     index::IndexCollection,
+    messages::{bus_to_status, AlertMessage, Message, MessageBus},
     operation::{DigestData, RuntimeEntityIdent},
     worker_status::WorkerStatusBackend,
 };
@@ -307,13 +308,13 @@ pub trait TexOperation: Send {
     fn operation_ident(&self) -> DigestData;
 }
 
-pub async fn process_inputs<'a, P: TexProcessor>(
+pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus>(
     inputs: impl IntoIterator<Item = &'a RuntimeEntityIdent>,
     n_workers: usize,
     proc: &mut P,
     cache: &mut Cache,
     indices: &mut IndexCollection,
-    status: &mut dyn StatusBackend,
+    mut bus: B,
 ) -> Result<usize> {
     let self_path = atry!(
         std::env::current_exe();
@@ -347,7 +348,7 @@ pub async fn process_inputs<'a, P: TexProcessor>(
         // If the cache query fails, that's definitely something that should
         // cause us to bail immediately.
         let needs_rerun = atry!(
-            cache.operation_needs_rerun(&opid, indices, status);
+            bus_to_status(bus.clone(), |s| cache.operation_needs_rerun(&opid, indices, s)).await;
             ["failed to query build cache"]
         );
 
@@ -367,7 +368,11 @@ pub async fn process_inputs<'a, P: TexProcessor>(
             Err(WorkerError::General(e)) => {
                 n_failures += 1;
                 tt_error!(item_status, "prep failed"; e);
-                tt_error!(status, "giving up early");
+                bus.post(&Message::Error(AlertMessage {
+                    message: "giving up early".into(),
+                    context: Default::default(),
+                }))
+                .await;
                 break; // give up
             }
 
@@ -407,7 +412,11 @@ pub async fn process_inputs<'a, P: TexProcessor>(
 
                     Err(WorkerError::General(_)) => {
                         n_failures += 1;
-                        tt_error!(status, "giving up early");
+                        bus.post(&Message::Error(AlertMessage {
+                            message: "giving up early".into(),
+                            context: Default::default(),
+                        }))
+                        .await;
                         break; // give up
                     }
 
@@ -421,7 +430,7 @@ pub async fn process_inputs<'a, P: TexProcessor>(
                     }
                 };
 
-                process_input_finish(proc, tup.0, tup.1, cache, indices, status);
+                process_input_finish(proc, tup.0, tup.1, cache, indices, bus.clone()).await;
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => unreachable!(),
@@ -445,7 +454,7 @@ pub async fn process_inputs<'a, P: TexProcessor>(
             }
         };
 
-        process_input_finish(proc, tup.0, tup.1, cache, indices, status);
+        process_input_finish(proc, tup.0, tup.1, cache, indices, bus.clone()).await;
     }
 
     // OK, all done!
@@ -460,19 +469,23 @@ pub async fn process_inputs<'a, P: TexProcessor>(
     Ok(n_tasks)
 }
 
-fn process_input_finish<P: TexProcessor>(
+async fn process_input_finish<P: TexProcessor, B: MessageBus>(
     proc: &mut P,
     ocd: OpCacheData,
     item: <<P as TexProcessor>::Worker as WorkerDriver>::OpInfo,
     cache: &mut Cache,
     indices: &mut IndexCollection,
-    status: &mut dyn StatusBackend,
+    mut bus: B,
 ) {
     proc.accumulate_output(item, true);
 
     // Since any failure only involves the caching step, not the actual build
     // operation, we'll report it but not flag the error at a higher level.
     if let Err(e) = cache.finalize_operation(ocd, indices) {
-        tt_error!(status, "failed to save caching information for a build step"; e);
+        bus.error(
+            "failed to save caching information for a build step",
+            Some(&e.into()),
+        )
+        .await;
     }
 }

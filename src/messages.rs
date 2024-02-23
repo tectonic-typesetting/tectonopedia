@@ -14,6 +14,21 @@ use tokio::sync::mpsc;
 /// A trait for types that can distribute messages
 pub trait MessageBus: Clone + Send {
     async fn post(&mut self, msg: &Message);
+
+    async fn error<T: ToString>(&mut self, message: T, err: Option<&Error>) {
+        let mut alert = AlertMessage {
+            message: message.to_string(),
+            context: Default::default(),
+        };
+
+        if let Some(e) = err {
+            for item in e.chain() {
+                alert.context.push(item.to_string());
+            }
+        }
+
+        self.post(&Message::Error(alert)).await;
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -203,4 +218,16 @@ pub fn new_sync_bus_channel() -> (SyncMessageBusSender, SyncMessageBusReceiver) 
     let send = SyncMessageBusSender { tx };
     let recv = SyncMessageBusReceiver { rx };
     (send, recv)
+}
+
+pub async fn bus_to_status<B: MessageBus, F, R>(bus: B, func: F) -> R
+where
+    F: FnOnce(&mut dyn StatusBackend) -> R,
+{
+    // todo? use an unbounded channel
+    let (mut send, recv) = new_sync_bus_channel();
+    let result = func(&mut send);
+    std::mem::drop(send);
+    recv.drain(bus).await;
+    result
 }

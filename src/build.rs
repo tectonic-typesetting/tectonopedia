@@ -21,12 +21,12 @@
 use clap::Args;
 use std::{
     fs,
-    io::{ErrorKind, Write},
+    io::ErrorKind,
     sync::{Arc, Mutex},
     time::Instant,
 };
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_note, StatusBackend};
+use tectonic_status_base::StatusBackend;
 use tokio::task::spawn_blocking;
 
 use crate::{
@@ -46,8 +46,6 @@ use crate::{
 async fn primary_build_implementation<T: MessageBus>(
     n_workers: usize,
     collect_paths: bool,
-    terse_output: bool,
-    status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
     mut bus: T,
 ) -> Result<Vec<String>> {
     // Set up data structures. Here the return type of spawn_blocking is a
@@ -99,7 +97,7 @@ async fn primary_build_implementation<T: MessageBus>(
         &mut p1r,
         &mut cache,
         &mut indices,
-        &mut **status.lock().unwrap(),
+        bus.clone(),
     )
     .await?;
 
@@ -151,29 +149,17 @@ async fn primary_build_implementation<T: MessageBus>(
         &mut p2r,
         &mut cache,
         &mut indices,
-        &mut **status.lock().unwrap(),
+        bus.clone(),
     )
     .await?;
-    let (n_outputs_rerun, n_outputs_total) = p2r.n_outputs();
-
-    if terse_output {
-        print!(" pass2");
-        let _ignored = std::io::stdout().flush();
-    } else {
-        tt_note!(
-            *status.lock().unwrap(),
-            "refreshed TeX pass 2 outputs       - recreated {n_outputs_rerun} out of {n_outputs_total} HTML outputs"
-        );
-    }
+    let (_n_outputs_rerun, _n_outputs_total) = p2r.n_outputs();
 
     maybe_modified_output_files.append(&mut p2r.into_potential_modified_outputs());
 
-    let status_clone = status.clone();
+    let (mut bus_tx, bus_rx) = new_sync_bus_channel();
 
-    let (modified_output_files, indices) = spawn_blocking(
+    let handle = spawn_blocking(
         move || -> Result<(Vec<RuntimeEntityIdent>, index::IndexCollection)> {
-            let mut status = status_clone.lock().unwrap();
-
             // Generate the entrypoint file, and start generating the list of output
             // files that actually *were* modified. Unlike the TeX pass 2 and assets
             // steps, it's convenient for the entrypoint stage to figure out whether the
@@ -184,15 +170,8 @@ async fn primary_build_implementation<T: MessageBus>(
             let id = entrypoint_file::maybe_make_entrypoint_operation(
                 &mut cache,
                 &mut indices,
-                &mut **status,
+                &mut bus_tx,
             )?;
-
-            if terse_output {
-                print!(" entrypoint");
-                let _ignored = std::io::stdout().flush();
-            } else {
-                tt_note!(status, "refreshed entrypoint file");
-            }
 
             if let Some(id) = id {
                 modified_output_files.push(id);
@@ -210,8 +189,10 @@ async fn primary_build_implementation<T: MessageBus>(
 
             Ok((modified_output_files, indices))
         },
-    )
-    .await??;
+    );
+
+    bus_rx.drain(bus.clone()).await;
+    let (modified_output_files, indices) = handle.await??;
 
     // TODO: rewrite the cache file state info!!!
 
@@ -235,8 +216,6 @@ async fn primary_build_implementation<T: MessageBus>(
 async fn build_through_index<T: MessageBus>(
     n_workers: usize,
     collect_paths: bool,
-    terse_output: bool,
-    status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
     mut bus: T,
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
@@ -281,14 +260,8 @@ async fn build_through_index<T: MessageBus>(
 
     // Main build.
 
-    let modified_files = primary_build_implementation(
-        n_workers,
-        collect_paths,
-        terse_output,
-        status.clone(),
-        bus.clone(),
-    )
-    .await?;
+    let modified_files =
+        primary_build_implementation(n_workers, collect_paths, bus.clone()).await?;
 
     // De-stage for `yarn` ops and make the fulltext index.
 
@@ -328,7 +301,7 @@ impl BuildArgs {
     async fn inner(self, status: Box<dyn StatusBackend + Send>) {
         let status = Arc::new(Mutex::new(status));
         let bus = CliStatusMessageBus::new_scaffold(status.clone());
-        let result = self.double_inner(status.clone(), bus).await;
+        let result = self.double_inner(bus).await;
         let status = &mut **status.lock().unwrap();
 
         if let Err(e) = result {
@@ -337,19 +310,14 @@ impl BuildArgs {
         }
     }
 
-    async fn double_inner(
-        self,
-        status: Arc<Mutex<Box<dyn StatusBackend + Send>>>,
-        mut bus: CliStatusMessageBus,
-    ) -> Result<()> {
+    async fn double_inner(self, mut bus: CliStatusMessageBus) -> Result<()> {
         let n_workers = if self.parallel > 0 {
             self.parallel
         } else {
             num_cpus::get()
         };
 
-        let (t0, _) =
-            build_through_index(n_workers, false, false, status.clone(), bus.clone()).await?;
+        let (t0, _) = build_through_index(n_workers, false, bus.clone()).await?;
 
         bus.post(&Message::PhaseStarted("yarn-build".into())).await;
 
