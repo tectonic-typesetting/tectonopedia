@@ -7,7 +7,9 @@
 //! to update the user on how the build is going.
 
 use std::sync::{Arc, Mutex};
+use tectonic_errors::Error;
 use tectonic_status_base::{tt_error, tt_note, StatusBackend};
+use tokio::sync::mpsc;
 
 /// A trait for types that can distribute messages
 pub trait MessageBus: Clone + Send {
@@ -39,7 +41,12 @@ pub enum Message {
     /// An error has been encountered during the build. These errors are not
     /// related to the TeX compilation and so are not associated with any
     /// particular input file.
-    Error(ErrorMessage),
+    Error(AlertMessage),
+
+    /// A warning has been encountered during the build. These warnings are not
+    /// related to the TeX compilation and so are not associated with any
+    /// particular input file.
+    Warning(AlertMessage),
 
     /// Output from the `yarn serve` program has been received.
     YarnOutput(YarnOutputMessage),
@@ -57,7 +64,7 @@ pub struct BuildCompleteMessage {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct ErrorMessage {
+pub struct AlertMessage {
     /// The essential message
     pub message: String,
 
@@ -132,4 +139,48 @@ impl MessageBus for CliStatusMessageBus {
             _ => {}
         }
     }
+}
+
+pub struct SyncMessageBusSender {
+    tx: mpsc::Sender<Message>,
+}
+
+impl SyncMessageBusSender {
+    pub fn post(&mut self, msg: Message) {
+        self.tx.blocking_send(msg).unwrap();
+    }
+
+    pub fn warn<T: ToString>(&mut self, message: T, err: Option<Error>) {
+        let mut alert = AlertMessage {
+            message: message.to_string(),
+            context: Default::default(),
+        };
+
+        if let Some(e) = err {
+            for item in e.chain() {
+                alert.context.push(item.to_string());
+            }
+        }
+
+        self.post(Message::Warning(alert))
+    }
+}
+
+pub struct SyncMessageBusReceiver {
+    rx: mpsc::Receiver<Message>,
+}
+
+impl SyncMessageBusReceiver {
+    pub async fn drain<T: MessageBus>(mut self, mut bus: T) {
+        while let Some(msg) = self.rx.recv().await {
+            bus.post(&msg).await;
+        }
+    }
+}
+
+pub fn new_sync_bus_channel() -> (SyncMessageBusSender, SyncMessageBusReceiver) {
+    let (tx, rx) = mpsc::channel(16);
+    let send = SyncMessageBusSender { tx };
+    let recv = SyncMessageBusReceiver { rx };
+    (send, recv)
 }

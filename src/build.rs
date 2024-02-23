@@ -31,7 +31,10 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     assets, cache, entrypoint_file, index, inputs,
-    messages::{BuildCompleteMessage, CliStatusMessageBus, ErrorMessage, Message, MessageBus},
+    messages::{
+        new_sync_bus_channel, AlertMessage, BuildCompleteMessage, CliStatusMessageBus, Message,
+        MessageBus,
+    },
     operation::{RuntimeEntity, RuntimeEntityIdent},
     pass1, pass2, tex_pass, yarn,
 };
@@ -51,35 +54,39 @@ async fn primary_build_implementation<T: MessageBus>(
     // Result<Result<IndexCollection>, JoinError>, so we have to double-unwrap
     // it.
 
-    let status_clone = status.clone();
-    bus.post(&Message::PhaseStarted("setup".into())).await;
+    let (mut bus_tx, bus_rx) = new_sync_bus_channel();
 
-    let (mut indices, mut cache, inputs) =
-        spawn_blocking(move || -> Result<(index::IndexCollection, cache::Cache, Vec<RuntimeEntityIdent>)> {
-            let mut status = status_clone.lock().unwrap();
+    let handle = spawn_blocking(move || -> Result<(index::IndexCollection, cache::Cache, Vec<RuntimeEntityIdent>)> {
+        bus_tx.post(Message::PhaseStarted("load-indices".into()));
 
-            let mut indices = index::IndexCollection::new()?;
-            atry!(
-                indices.load_user_indices();
-                ["failed to load user indices"]
-            );
+        let mut indices = index::IndexCollection::new()?;
+        atry!(
+            indices.load_user_indices();
+            ["failed to load user indices"]
+        );
 
-            let cache = atry!(
-                cache::Cache::new(&mut indices, &mut **status);
-                ["error initializing build cache"]
-            );
+        bus_tx.post(Message::PhaseStarted("load-cache".into()));
 
-            // Collect all of the inputs. With the way that we make the build
-            // incremental, it makes the most sense to just put them all in a big vec.
+        let cache = atry!(
+            cache::Cache::new(&mut indices, &mut bus_tx);
+            ["error initializing build cache"]
+        );
 
-            let inputs = atry!(
-                inputs::collect_inputs(&mut indices);
-                ["failed to scan list of input files"]
-            );
+        bus_tx.post(Message::PhaseStarted("collect-inputs".into()));
 
-            Ok((indices, cache, inputs))
-        })
-        .await??;
+        // Collect all of the inputs. With the way that we make the build
+        // incremental, it makes the most sense to just put them all in a big vec.
+
+        let inputs = atry!(
+            inputs::collect_inputs(&mut indices);
+            ["failed to scan list of input files"]
+        );
+
+        Ok((indices, cache, inputs))
+    });
+
+    bus_rx.drain(bus.clone()).await;
+    let (mut indices, mut cache, inputs) = handle.await??;
 
     // First TeX pass of indexing and gathering font/asset information.
 
@@ -286,7 +293,7 @@ async fn build_through_index<T: MessageBus>(
 
             Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
                 // TODO: add a --force option and/or a `clean` subcommand
-                bus.post(&Message::Error(ErrorMessage {
+                bus.post(&Message::Error(AlertMessage {
                     message: "failed to create directory `staging` - it already exists".into(),
                     context: vec![
                         "is another \"build\" or \"serve\" process running?".into(),
