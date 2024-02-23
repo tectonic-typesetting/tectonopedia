@@ -213,7 +213,7 @@ async fn primary_build_implementation<T: MessageBus>(
     Ok(paths)
 }
 
-async fn build_through_index<T: MessageBus>(
+pub async fn build_through_index<T: MessageBus>(
     n_workers: usize,
     collect_paths: bool,
     mut bus: T,

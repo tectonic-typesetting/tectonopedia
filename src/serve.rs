@@ -27,7 +27,8 @@ use warp::{
 };
 
 use crate::{
-    messages::{Message, MessageBus},
+    build::build_through_index,
+    messages::{BuildCompleteMessage, Message, MessageBus},
     yarn::YarnServer,
 };
 
@@ -62,6 +63,12 @@ impl ServeArgs {
     }
 
     async fn inner(self) -> Result<()> {
+        let n_workers = if self.parallel > 0 {
+            self.parallel
+        } else {
+            num_cpus::get()
+        };
+
         // A channel for the secondary tasks to issue commands to the main task.
 
         let (command_tx, mut command_rx) = mpsc::channel(4);
@@ -183,8 +190,29 @@ impl ServeArgs {
                             }
 
                             ServeCommand::Build => {
-                                println!("Should build now.");
                                 clients.post(&Message::BuildStarted).await;
+
+                                match build_through_index(n_workers, true, clients.clone()).await {
+                                    Ok((t0, changed)) => {
+                                        // Touch the modified files; Parcel's change-detection code doesn't
+                                        // catch atomic replacements.
+                                        for output in &changed {
+                                            let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
+
+                                            if let Err(e) = filetime::set_file_mtime(&p, filetime::FileTime::now()) {
+                                                clients.error(format!("unable to update modification time of file `{}`", p), Some(&e.into())).await;
+                                            }
+                                        }
+
+                                        clients.post(&Message::BuildComplete(BuildCompleteMessage {
+                                            success: true,
+                                            elapsed: t0.elapsed().as_secs_f32(),
+                                        }))
+                                        .await;
+                                    }
+
+                                    Err(e) => clients.error("build failure", Some(&e)).await
+                                }
                             }
                         }
                     } else {
