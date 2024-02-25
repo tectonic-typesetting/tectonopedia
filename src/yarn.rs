@@ -107,9 +107,6 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Resul
 }
 
 /// Run the `yarn index` command.
-///
-/// This isn't plugged into the incremental build system (for now?). We just run
-/// the command.
 pub async fn yarn_index<T: MessageBus>(bus: T, piped: bool) -> Result<()> {
     do_yarn("index", bus, piped).await
 }

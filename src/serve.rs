@@ -13,9 +13,16 @@
 use clap::Args;
 use futures::{FutureExt, StreamExt};
 use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
-use std::{convert::Infallible, path::Path, sync::Arc, time::Duration};
+use std::{
+    convert::Infallible,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+    time::Duration,
+};
 use tectonic_errors::prelude::*;
-use tectonic_status_base::StatusBackend;
+use tectonic_status_base::{tt_note, StatusBackend};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot, Mutex},
@@ -60,7 +67,9 @@ enum ServeOutcome {
 }
 
 impl ServeArgs {
-    pub fn exec(self, _status: &mut dyn StatusBackend) -> Result<()> {
+    pub fn exec(self, status: &mut dyn StatusBackend) -> Result<()> {
+        setup_prerequisites(status)?;
+
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -77,7 +86,7 @@ impl ServeArgs {
 
         // A channel for the secondary tasks to issue commands to the main task.
 
-        let (command_tx, mut command_rx) = mpsc::channel(4);
+        let (command_tx, mut command_rx) = mpsc::channel(8);
 
         // Set up filesystem change watching
 
@@ -132,7 +141,7 @@ impl ServeArgs {
         let (warp_quit_tx, warp_quit_rx) = oneshot::channel();
 
         let (warp_addr, warp_server) =
-            warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], 8000), async {
+            warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], 5678), async {
                 warp_quit_rx.await.ok();
             });
 
@@ -318,6 +327,128 @@ impl ServeArgs {
             Err(e) => Err(e),
         }
     }
+}
+
+fn setup_prerequisites(status: &mut dyn StatusBackend) -> Result<()> {
+    // `yarn install` in the main directory?
+
+    if !Path::new("node_modules").exists() {
+        tt_note!(status, "running one-time `yarn install` ...");
+
+        println!();
+        let mut cmd = Command::new("yarn");
+        cmd.arg("install");
+
+        let status = atry!(
+            cmd.status();
+            ["failed to spawn `yarn install` subcommand"]
+        );
+
+        println!();
+
+        if !status.success() {
+            bail!("`yarn install` subcommand failed");
+        }
+    }
+
+    // `yarn install` in the serve-ui sub directory?
+
+    let mut pb = PathBuf::from("serve-ui");
+    pb.push("node_modules");
+
+    if !pb.exists() {
+        tt_note!(status, "running one-time `yarn install` in `serve-ui` ...");
+
+        println!();
+        let mut cmd = Command::new("yarn");
+        cmd.arg("install");
+
+        // see docs for current_dir()
+        pb.pop();
+        let pb = atry!(
+            pb.canonicalize();
+            ["failed to canonicalize subdir"]
+        );
+
+        cmd.current_dir(pb);
+
+        let status = atry!(
+            cmd.status();
+            ["failed to spawn `yarn install` subcommand"]
+        );
+
+        println!();
+
+        if !status.success() {
+            bail!("`yarn install` subcommand failed");
+        }
+    }
+
+    // Build the serve UI?
+
+    let mut pb = PathBuf::from("serve-ui");
+    pb.push("dist");
+    pb.push("index.html");
+
+    if !pb.exists() {
+        tt_note!(status, "running one-time `yarn build` in `serve-ui` ...");
+
+        println!();
+        let mut cmd = Command::new("yarn");
+        cmd.arg("build");
+
+        // see docs for current_dir()
+        pb.pop();
+        pb.pop();
+        let pb = atry!(
+            pb.canonicalize();
+            ["failed to canonicalize subdir"]
+        );
+
+        cmd.current_dir(pb);
+
+        let status = atry!(
+            cmd.status();
+            ["failed to spawn `yarn build` subcommand"]
+        );
+
+        println!();
+
+        if !status.success() {
+            bail!("`yarn build` subcommand failed");
+        }
+    }
+
+    // stub `_all.html` for the `yarn serve` process?
+
+    let mut pb = PathBuf::from("build");
+    pb.push("_all.html");
+
+    if !pb.exists() {
+        // This one doesn't need reporting to the user
+
+        let mut parent = pb.clone();
+        parent.pop();
+        atry!(
+            std::fs::create_dir_all(&parent);
+            ["failed to create directory hierarchy `{}`", parent.display()]
+        );
+
+        let mut f = atry!(
+            std::fs::File::create(&pb);
+            ["failed to create `{}`", pb.display()]
+        );
+
+        atry!(
+            f.write_all(b"<html><head><title>Nothing Yet</title></head><body>Nothing here yet.</body></html>\n");
+            ["failed to write to `{}`", pb.display()]
+        );
+    }
+
+    // Ready to go!
+
+    tt_note!(status, "starting servers ...");
+    Ok(())
 }
 
 // The message bus for Warp-powered websocket clients
