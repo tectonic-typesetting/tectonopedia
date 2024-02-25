@@ -372,9 +372,17 @@ async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp
         }
     }));
 
-    // Meanwhile, we spend the rest of our time listening for client messages
+    // Trigger a build. In the standard setup, this means that we'll only kick
+    // off the build when the web UI is ready to accept messages about the build
+    // progress. This will re-build if multiple clients connect, but who cares?
 
     let command_tx = warp_state.lock().await.command_tx.clone();
+
+    if let Err(e) = command_tx.send(ServeCommand::Build).await {
+        eprintln!("error in WebSocket client handler notifying main task: {e:?}");
+    }
+
+    // Meanwhile, we spend the rest of our time listening for client messages
 
     while let Some(result) = client_ws_rx.next().await {
         let msg = match result {
@@ -392,14 +400,14 @@ async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp
         match msg.to_str() {
             Ok("trigger_build") => {
                 if let Err(e) = command_tx.send(ServeCommand::Build).await {
-                    println!("error in WebSocket client handler notifying main task: {e:?}");
+                    eprintln!("error in WebSocket client handler notifying main task: {e:?}");
                     break;
                 }
             }
 
             Ok("quit") => {
                 if let Err(e) = command_tx.send(ServeCommand::Quit(Ok(()))).await {
-                    println!("error in WebSocket client handler notifying main task: {e:?}");
+                    eprintln!("error in WebSocket client handler notifying main task: {e:?}");
                     break;
                 }
             }
