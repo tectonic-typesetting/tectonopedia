@@ -16,6 +16,8 @@ socket.addEventListener("message", (event) => {
 
     if (msg.hasOwnProperty("yarn_output")) {
       yarnServeTab.value?.onYarnOutput(msg);
+    } else if (msg === "server_quitting") {
+      yarnServeTab.value?.onServerQuitting(msg);
     } else {
       console.warn("recognized but unhandled message:", msg);
     }

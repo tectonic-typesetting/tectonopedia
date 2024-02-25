@@ -35,6 +35,7 @@ const PhaseStartedMessage = S.struct({
 });
 
 const ServerQuittingMessage = S.literal("server_quitting");
+export type ServerQuittingMessage = S.Schema.To<typeof ServerQuittingMessage>;
 
 const ToolOutputStreamStdout = S.literal("stdout");
 const ToolOutputStreamStderr = S.literal("stderr");

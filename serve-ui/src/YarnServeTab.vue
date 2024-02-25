@@ -1,25 +1,28 @@
 <script setup lang="ts">
 // The tab with output from the `yarn serve` process.
-import { ref } from "vue";
+import { ref, type Ref } from "vue";
 import { NLog } from "naive-ui";
 
-import { type YarnOutputMessage } from "./messages.js";
+import type { ServerQuittingMessage, YarnOutputMessage } from "./messages.js";
 
-const log = ref("");
+const lines: Ref<string[]> = ref([]);
 
 function onYarnOutput(msg: YarnOutputMessage) {
-  for (const line of msg.yarn_output.lines) {
-    log.value += line + "\n";
-  }
+  lines.value.push(...msg.yarn_output.lines);
 }
 
-defineExpose({ onYarnOutput });
+function onServerQuitting(_msg: ServerQuittingMessage) {
+  // The log component seems to elide empty lines, annoyingly.
+  lines.value.push(" ", "(server quitting)");
+}
+
+defineExpose({ onServerQuitting, onYarnOutput });
 </script>
 
 <template>
   <p>The output from <code>yarn serve</code>.</p>
 
-  <n-log class="log" :log="log" />
+  <n-log class="log" :lines="lines" />
 </template>
 
 <style scoped>
