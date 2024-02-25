@@ -286,6 +286,9 @@ pub async fn build_through_index<T: MessageBus>(
 pub struct BuildArgs {
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
+
+    #[arg(long)]
+    no_dist: bool,
 }
 
 impl BuildArgs {
@@ -320,12 +323,14 @@ impl BuildArgs {
 
         let (t0, _) = build_through_index(n_workers, false, bus.clone()).await?;
 
-        bus.post(&Message::PhaseStarted("yarn-build".into())).await;
+        if !self.no_dist {
+            bus.post(&Message::PhaseStarted("yarn-build".into())).await;
 
-        atry!(
-            yarn::yarn_build(bus.clone(), false).await;
-            ["failed to generate production files"]
-        );
+            atry!(
+                yarn::yarn_build(bus.clone(), false).await;
+                ["failed to generate production files"]
+            );
+        }
 
         bus.post(&Message::BuildComplete(BuildCompleteMessage {
             success: true,
