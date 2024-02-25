@@ -51,19 +51,28 @@ const ToolOutputStream = S.union(
     ToolOutputStreamStderr,
 );
 
-const WarningMessage = S.struct({
-    warning: AlertMessage,
-});
-export type WarningMessage = S.Schema.To<typeof WarningMessage>;
-
-const YarnOutputMessage = S.struct({
-    yarn_output: S.struct({
+const ToolOutputMessage = S.struct({
+    tool_output: S.struct({
         stream: ToolOutputStream,
         lines: S.array(S.string),
     }),
 });
 
-export type YarnOutputMessage = S.Schema.To<typeof YarnOutputMessage>;
+export type ToolOutputMessage = S.Schema.To<typeof ToolOutputMessage>;
+
+const WarningMessage = S.struct({
+    warning: AlertMessage,
+});
+export type WarningMessage = S.Schema.To<typeof WarningMessage>;
+
+const YarnServeOutputMessage = S.struct({
+    yarn_serve_output: S.struct({
+        stream: ToolOutputStream,
+        lines: S.array(S.string),
+    }),
+});
+
+export type YarnServeOutputMessage = S.Schema.To<typeof YarnServeOutputMessage>;
 
 // S.attachPropertySignature might be helpful here but it causes TypeScript
 // errors for me.
@@ -75,8 +84,9 @@ const Message = S.union(
     NoteMessage,
     PhaseStartedMessage,
     ServerQuittingMessage,
+    ToolOutputMessage,
     WarningMessage,
-    YarnOutputMessage,
+    YarnServeOutputMessage,
 );
 
 export type Message = S.Schema.To<typeof Message>;
@@ -90,5 +100,5 @@ export function parseMessage(input: any): Message {
         return result.right;
     }
 
-    throw new Error(`failed to parse input "${input}" as message: ${formatError(result.left)}`);
+    throw new Error(`failed to parse input "${JSON.stringify(input)}" as message: ${formatError(result.left)}`);
 }

@@ -11,24 +11,85 @@ use tokio::{
 };
 
 use crate::{
-    messages::{Message, MessageBus, ToolOutputStream, YarnOutputMessage},
+    messages::{Message, MessageBus, ToolOutputMessage, ToolOutputStream},
     serve::ServeCommand,
 };
 
 /// Run a `yarn` command.
-async fn do_yarn<T: MessageBus>(command: &str, mut bus: T) -> Result<()> {
+async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Result<()> {
     let mut cmd = Command::new("yarn");
     cmd.arg(command);
+
+    if piped {
+        cmd.stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+    }
 
     bus.post(&Message::CommandLaunched(format!("yarn {}", command)))
         .await;
 
-    // This form of the function should only be called in the "build" mode
-    // because it's not capturing any output. By the same token, we can safely
-    // println!() here to delimit the output.
-    println!();
-    let ec = cmd.status().await;
-    println!();
+    let mut child = atry!(
+        cmd.spawn();
+        ["failed to launch `yarn {}` process", command]
+    );
+
+    if !piped {
+        println!();
+    } else {
+        let stdout = child.stdout.take().expect("failed to open child stdout");
+        let mut stdout_lines = BufReader::new(stdout).lines();
+
+        let stderr = child.stderr.take().expect("failed to open child stderr");
+        let mut stderr_lines = BufReader::new(stderr).lines();
+
+        loop {
+            tokio::select! {
+                line = stdout_lines.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            bus.post(&Message::ToolOutput(ToolOutputMessage {
+                                stream: ToolOutputStream::Stdout,
+                                lines: vec![line],
+                            })).await;
+                        }
+
+                        Err(e) => {
+                            bus.error("failed to read child process stdout", Some(&e.into())).await;
+                        }
+
+                        _ => {}
+                    }
+                }
+
+                line = stderr_lines.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            bus.post(&Message::ToolOutput(ToolOutputMessage {
+                                stream: ToolOutputStream::Stderr,
+                                lines: vec![line],
+                            })).await;
+                        }
+
+                        Err(e) => {
+                            bus.error("failed to read child process stderr", Some(&e.into())).await;
+                        }
+
+                        _ => {}
+                    }
+                }
+
+                _ = child.wait() => {
+                    break;
+                }
+            }
+        }
+    }
+
+    let ec = child.wait().await;
+
+    if !piped {
+        println!();
+    }
 
     let ec = atry!(
         ec;
@@ -49,13 +110,13 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T) -> Result<()> {
 ///
 /// This isn't plugged into the incremental build system (for now?). We just run
 /// the command.
-pub async fn yarn_index<T: MessageBus>(bus: T) -> Result<()> {
-    do_yarn("index", bus).await
+pub async fn yarn_index<T: MessageBus>(bus: T, piped: bool) -> Result<()> {
+    do_yarn("index", bus, piped).await
 }
 
 /// Run the `yarn build` command.
-pub async fn yarn_build<T: MessageBus>(bus: T) -> Result<()> {
-    do_yarn("build", bus).await
+pub async fn yarn_build<T: MessageBus>(bus: T, piped: bool) -> Result<()> {
+    do_yarn("build", bus, piped).await
 }
 
 /// The `yarn serve` task for the development server
@@ -120,7 +181,7 @@ impl<T: MessageBus> YarnServer<T> {
                 line = stdout_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            self.bus.post(&Message::YarnOutput(YarnOutputMessage {
+                            self.bus.post(&Message::YarnServeOutput(ToolOutputMessage {
                                 stream: ToolOutputStream::Stdout,
                                 lines: vec![line],
                             })).await;
@@ -137,7 +198,7 @@ impl<T: MessageBus> YarnServer<T> {
                 line = stderr_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            self.bus.post(&Message::YarnOutput(YarnOutputMessage {
+                            self.bus.post(&Message::YarnServeOutput(ToolOutputMessage {
                                 stream: ToolOutputStream::Stderr,
                                 lines: vec![line],
                             })).await;

@@ -273,7 +273,7 @@ pub async fn build_through_index<T: MessageBus>(
     );
 
     atry!(
-        yarn::yarn_index(bus).await;
+        yarn::yarn_index(bus, true).await;
         ["failed to generate fulltext index"]
     );
 
@@ -322,7 +322,7 @@ impl BuildArgs {
         bus.post(&Message::PhaseStarted("yarn-build".into())).await;
 
         atry!(
-            yarn::yarn_build(bus.clone()).await;
+            yarn::yarn_build(bus.clone(), false).await;
             ["failed to generate production files"]
         );
 

@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, Mutex};
 use tectonic_errors::Error;
-use tectonic_status_base::{tt_error, tt_note, MessageKind, StatusBackend};
+use tectonic_status_base::{tt_error, tt_note, tt_warning, MessageKind, StatusBackend};
 use tokio::sync::mpsc;
 
 /// A trait for types that can distribute messages
@@ -71,8 +71,11 @@ pub enum Message {
     /// particular input file.
     Error(AlertMessage),
 
+    /// Output from a synchronously-run tool program has been received.
+    ToolOutput(ToolOutputMessage),
+
     /// Output from the `yarn serve` program has been received.
-    YarnOutput(YarnOutputMessage),
+    YarnServeOutput(ToolOutputMessage),
 
     /// The "serve" mode server is exiting.
     ServerQuitting,
@@ -97,7 +100,7 @@ pub struct AlertMessage {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct YarnOutputMessage {
+pub struct ToolOutputMessage {
     pub stream: ToolOutputStream,
     pub lines: Vec<String>,
 }
@@ -158,6 +161,40 @@ impl MessageBus for CliStatusMessageBus {
                     tt_error!(s, "  {c}");
                 }
             }
+
+            Message::Note(d) => {
+                let mut s = self.status.lock().unwrap();
+
+                tt_note!(s, "{}", d.message);
+
+                for c in &d.context[..] {
+                    tt_note!(s, "  {c}");
+                }
+            }
+
+            Message::Warning(d) => {
+                let mut s = self.status.lock().unwrap();
+
+                tt_warning!(s, "{}", d.message);
+
+                for c in &d.context[..] {
+                    tt_warning!(s, "  {c}");
+                }
+            }
+
+            Message::ToolOutput(d) => match d.stream {
+                ToolOutputStream::Stdout => {
+                    for line in &d.lines {
+                        println!("{line}");
+                    }
+                }
+
+                ToolOutputStream::Stderr => {
+                    for line in &d.lines {
+                        eprintln!("{line}");
+                    }
+                }
+            },
 
             _ => {}
         }

@@ -7,7 +7,8 @@ import type {
   BuildStartedMessage,
   CommandLaunchedMessage,
   PhaseStartedMessage,
-  ServerQuittingMessage
+  ServerQuittingMessage,
+  ToolOutputMessage,
 } from "./messages.js";
 
 // Styled chunks of log content
@@ -45,6 +46,16 @@ function onCommandLaunched(msg: CommandLaunchedMessage) {
   appendSpan("default", `\n→ launching \`${msg.command_launched}\` ...\n`);
 }
 
+function onToolOutput(msg: ToolOutputMessage) {
+  const text = msg.tool_output.lines.join("\n") + "\n";
+
+  if (msg.tool_output.stream == "stderr") {
+    appendSpan("error", text);
+  } else {
+    appendSpan("defaul", text);
+  }
+}
+
 function onBuildComplete(msg: BuildCompleteMessage) {
   const e = msg.build_complete.elapsed.toFixed(1);
 
@@ -59,7 +70,14 @@ function onServerQuitting(_msg: ServerQuittingMessage) {
   appendSpan("default", "\n(server quitting)");
 }
 
-defineExpose({ onBuildStarted, onPhaseStarted, onCommandLaunched, onBuildComplete, onServerQuitting });
+defineExpose({
+  onBuildComplete,
+  onBuildStarted,
+  onCommandLaunched,
+  onPhaseStarted,
+  onServerQuitting,
+  onToolOutput,
+});
 </script>
 
 <template>

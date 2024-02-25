@@ -20,8 +20,10 @@ socket.addEventListener("message", (event) => {
       buildProgressTab.value?.onPhaseStarted(msg);
     } else if (msg.hasOwnProperty("command_launched")) {
       buildProgressTab.value?.onCommandLaunched(msg);
-    } else if (msg.hasOwnProperty("yarn_output")) {
-      yarnServeTab.value?.onYarnOutput(msg);
+    } else if (msg.hasOwnProperty("tool_output")) {
+      buildProgressTab.value?.onToolOutput(msg);
+    } else if (msg.hasOwnProperty("yarn_serve_output")) {
+      yarnServeTab.value?.onYarnServeOutput(msg);
     } else if (msg.hasOwnProperty("build_complete")) {
       buildProgressTab.value?.onBuildComplete(msg);
     } else if (msg === "build_started") {

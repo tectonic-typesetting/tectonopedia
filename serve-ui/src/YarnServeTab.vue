@@ -3,12 +3,13 @@
 import { ref } from "vue";
 import { NButton, NFlex } from "naive-ui";
 
-import type { ServerQuittingMessage, YarnOutputMessage } from "./messages.js";
+import type { ServerQuittingMessage, YarnServeOutputMessage } from "./messages.js";
 
 const log = ref("")
 
-function onYarnOutput(msg: YarnOutputMessage) {
-  const s = msg.yarn_output.lines.join("\n") + "\n";
+function onYarnServeOutput(msg: YarnServeOutputMessage) {
+  // We're ignoring whether the message is on stdout or stderr.
+  const s = msg.yarn_serve_output.lines.join("\n") + "\n";
   log.value += s;
 }
 
@@ -20,7 +21,7 @@ function onClear() {
   log.value = "";
 }
 
-defineExpose({ onServerQuitting, onYarnOutput });
+defineExpose({ onServerQuitting, onYarnServeOutput });
 </script>
 
 <template>
