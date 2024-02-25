@@ -2,12 +2,16 @@
 import { ref, type Ref } from "vue";
 import { NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
 
-import { parseMessage } from "./messages.js";
+import { parseMessage, type ServerInfoMessage } from "./messages.js";
 import BuildProgressTab from "./BuildProgressTab.vue";
 import YarnServeTab from "./YarnServeTab.vue";
 
 const buildProgressTab: Ref<typeof BuildProgressTab | null> = ref(null);
 const yarnServeTab: Ref<typeof YarnServeTab | null> = ref(null);
+
+const appUrl = ref("");
+
+// Handling the websocket
 
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
@@ -31,6 +35,8 @@ socket.addEventListener("message", (event) => {
     } else if (msg === "server_quitting") {
       buildProgressTab.value?.onServerQuitting(msg);
       yarnServeTab.value?.onServerQuitting(msg);
+    } else if (msg.hasOwnProperty("server_info")) {
+      onServerInfo(msg as ServerInfoMessage);
     } else {
       console.warn("recognized but unhandled message:", msg);
     }
@@ -39,12 +45,20 @@ socket.addEventListener("message", (event) => {
   }
 });
 
+// Actions
+
 function onTrigger() {
   socket.send("trigger_build");
 }
 
 function onQuit() {
   socket.send("quit");
+}
+
+function onServerInfo(msg: ServerInfoMessage) {
+  const addr = new URL(document.location.toString());
+  addr.port = `${msg.server_info.app_port}`;
+  appUrl.value = addr.href;
 }
 </script>
 
@@ -54,6 +68,9 @@ function onQuit() {
     <n-card title="Tectonopedia Build UI">
       <template #header-extra>
         <nav>
+          <div class="app-link" v-if="appUrl">
+            <b>App URL:</b> <a :href="appUrl" target="_blank">{{ appUrl }}</a>
+          </div>
           <n-button @click="onTrigger" strong secondary type="info">Trigger Build</n-button>
           <n-button @click="onQuit" strong secondary type="error">Quit</n-button>
         </nav>
@@ -76,6 +93,11 @@ function onQuit() {
 nav {
   display: flex;
   flex-direction: row;
+  align-items: center;
   gap: 1rem;
+}
+
+.app-link {
+  font-size: larger;
 }
 </style>

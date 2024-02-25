@@ -40,6 +40,14 @@ const PhaseStartedMessage = S.struct({
 });
 export type PhaseStartedMessage = S.Schema.To<typeof PhaseStartedMessage>;
 
+const ServerInfoMessage = S.struct({
+    server_info: S.struct({
+        app_port: S.number,
+        n_workers: S.number,
+    })
+});
+export type ServerInfoMessage = S.Schema.To<typeof ServerInfoMessage>;
+
 const ServerQuittingMessage = S.literal("server_quitting");
 export type ServerQuittingMessage = S.Schema.To<typeof ServerQuittingMessage>;
 
@@ -83,6 +91,7 @@ const Message = S.union(
     ErrorMessage,
     NoteMessage,
     PhaseStartedMessage,
+    ServerInfoMessage,
     ServerQuittingMessage,
     ToolOutputMessage,
     WarningMessage,

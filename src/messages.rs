@@ -77,6 +77,9 @@ pub enum Message {
     /// Output from the `yarn serve` program has been received.
     YarnServeOutput(ToolOutputMessage),
 
+    /// Information about the build server. Sent to clients on startup.
+    ServerInfo(ServerInfoMessage),
+
     /// The "serve" mode server is exiting.
     ServerQuitting,
 }
@@ -96,6 +99,18 @@ pub struct AlertMessage {
 
     /// Additional contextual information, advice, etc.
     pub context: Vec<String>,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ServerInfoMessage {
+    /// The port at which the actual app is running. We express it as a port,
+    /// rather than a full URL, in case someone is accessing us through some
+    /// kind of proxy situation.
+    pub app_port: u16,
+
+    /// The number of workers used during the parallelized passes
+    pub n_workers: usize,
 }
 
 #[derive(serde::Serialize)]

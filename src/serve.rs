@@ -28,7 +28,7 @@ use warp::{
 
 use crate::{
     build::build_through_index,
-    messages::{BuildCompleteMessage, Message, MessageBus},
+    messages::{BuildCompleteMessage, Message, MessageBus, ServerInfoMessage},
     yarn::YarnServer,
 };
 
@@ -46,6 +46,9 @@ pub struct ServeArgs {
 pub enum ServeCommand {
     /// Rebuild the document.
     Build,
+
+    /// Notify the server that a client has connectd.
+    ClientConnected,
 
     /// Quit the whole application.
     Quit(Result<()>),
@@ -166,21 +169,23 @@ impl ServeArgs {
         let warp_join = tokio::task::spawn(warp_server);
         let yarn_join = tokio::task::spawn(yarn_server.serve());
 
+        let app_url = format!("http://localhost:{yarn_serve_port}/");
+        let ui_url = format!("http://localhost:{}/", warp_addr.port());
+
         println!();
-        println!(
-            "    app listening on:        http://localhost:{}/",
-            yarn_serve_port
-        );
-        println!(
-            "    build UI listening on:   http://localhost:{}/",
-            warp_addr.port()
-        );
+        println!("    app listening on:        {app_url}");
+        println!("    build UI listening on:   {ui_url}");
         println!();
+
+        let info_message = ServerInfoMessage {
+            app_port: yarn_serve_port,
+            n_workers,
+        };
 
         // Open in the browser, maybe
 
         if self.open {
-            if let Err(e) = open::that(format!("http://localhost:{}/", warp_addr.port())) {
+            if let Err(e) = open::that_detached(&ui_url) {
                 eprintln!("failed to open UI in web browser: {e}");
             }
         }
@@ -207,6 +212,20 @@ impl ServeArgs {
                                 }
 
                                 break;
+                            }
+
+                            ServeCommand::ClientConnected => {
+                                clients.post(&Message::ServerInfo(info_message.clone())).await;
+
+                                // Trigger a build (awkwardly). In the standard
+                                // setup, this means that we'll only kick off
+                                // the build when the web UI is ready to accept
+                                // messages about the build progress. This will
+                                // re-build if multiple clients connect, but who
+                                // cares?
+                                if let Err(e) = command_tx.send(ServeCommand::Build).await {
+                                    eprintln!("error: failed to send internal command: {e}");
+                                }
                             }
 
                             ServeCommand::Build => {
@@ -372,13 +391,11 @@ async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp
         }
     }));
 
-    // Trigger a build. In the standard setup, this means that we'll only kick
-    // off the build when the web UI is ready to accept messages about the build
-    // progress. This will re-build if multiple clients connect, but who cares?
+    // Let the main thread know that we're here.
 
     let command_tx = warp_state.lock().await.command_tx.clone();
 
-    if let Err(e) = command_tx.send(ServeCommand::Build).await {
+    if let Err(e) = command_tx.send(ServeCommand::ClientConnected).await {
         eprintln!("error in WebSocket client handler notifying main task: {e:?}");
     }
 
