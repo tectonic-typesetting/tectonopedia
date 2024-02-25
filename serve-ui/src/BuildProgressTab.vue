@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The tab reporting overall progress from the active build.
-import { ref } from "vue";
+import { ref, type Ref } from "vue";
 
 import type {
   BuildCompleteMessage,
@@ -10,32 +10,53 @@ import type {
   ServerQuittingMessage
 } from "./messages.js";
 
-const log = ref("")
+// Styled chunks of log content
+
+interface Span {
+  cls: string,
+  content: string,
+}
+
+const spans: Ref<Span[]> = ref([]);
+
+function appendSpan(cls: string, content: string) {
+  const n = spans.value.length;
+
+  if (n > 0 && spans.value[n - 1].cls == cls) {
+    spans.value[n - 1].content += content;
+  } else {
+    spans.value.push({ cls, content });
+  }
+}
+
+// Events
+
 
 function onBuildStarted(_msg: BuildStartedMessage) {
-  log.value = `Starting new build at ${new Date().toISOString()}\n`;
+  spans.value = [];
+  appendSpan("success", `Starting new build at ${new Date().toISOString()}\n`);
 }
 
 function onPhaseStarted(msg: PhaseStartedMessage) {
-  log.value += `\n→ phase ${msg.phase_started}\n`;
+  appendSpan("default", `\n→ phase ${msg.phase_started}\n`);
 }
 
 function onCommandLaunched(msg: CommandLaunchedMessage) {
-  log.value += `\n→ launching \`${msg.command_launched}\` ...\n`;
+  appendSpan("default", `\n→ launching \`${msg.command_launched}\` ...\n`);
 }
 
 function onBuildComplete(msg: BuildCompleteMessage) {
   const e = msg.build_complete.elapsed.toFixed(1);
 
   if (msg.build_complete.success) {
-    log.value += `\n<span class="success">Build successful in ${e} seconds</span>\n`;
+    appendSpan("success", `\nBuild successful in ${e} seconds\n`);
   } else {
-    log.value += `\n<span class="error">Build failed after ${e} seconds</span>\n`;
+    appendSpan("error", `\nBuild failed after ${e} seconds\n`);
   }
 }
 
 function onServerQuitting(_msg: ServerQuittingMessage) {
-  log.value += "\n(server quitting)";
+  appendSpan("default", "\n(server quitting)");
 }
 
 defineExpose({ onBuildStarted, onPhaseStarted, onCommandLaunched, onBuildComplete, onServerQuitting });
@@ -44,7 +65,7 @@ defineExpose({ onBuildStarted, onPhaseStarted, onCommandLaunched, onBuildComplet
 <template>
   <p>Progress of the current (or most recent) build operation.</p>
 
-  <pre class="log"><code ref="code">{{ log }}</code></pre>
+  <pre class="log"><code ref="code" v-for="s in spans"><span :class="s.cls">{{ s.content }}</span></code></pre>
 </template>
 
 <style scoped>
