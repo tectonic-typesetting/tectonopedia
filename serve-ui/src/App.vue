@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import { ref, type Ref } from "vue";
 import { NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
+
 import { parseMessage } from "./messages.js";
+import YarnServeTab from "./YarnServeTab.vue";
+
+const yarnServeTab: Ref<typeof YarnServeTab | null> = ref(null);
 
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
@@ -8,7 +13,12 @@ socket.addEventListener("message", (event) => {
   try {
     const structured = JSON.parse(event.data);
     const msg = parseMessage(structured);
-    console.log("parsed OK:", msg);
+
+    if (msg.hasOwnProperty("yarn_output")) {
+      yarnServeTab.value?.onYarnOutput(msg);
+    } else {
+      console.warn("recognized but unhandled message:", msg);
+    }
   } catch (e) {
     console.warn(e);
   }
@@ -36,7 +46,7 @@ function onQuit() {
         </n-tab-pane>
 
         <n-tab-pane name="yarn-serve" tab="yarn serve">
-          <p>The output from <code>yarn serve</code>.</p>
+          <yarn-serve-tab ref="yarnServeTab" />
         </n-tab-pane>
       </n-tabs>
     </n-card>

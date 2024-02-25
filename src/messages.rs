@@ -5,6 +5,9 @@
 //!
 //! These messages are used by the "watch UI" and `build` CLI
 //! to update the user on how the build is going.
+//!
+//! See also /serve-ui/src/messages.ts, which defines TypeScript types
+//! mirroring these.
 
 use std::sync::{Arc, Mutex};
 use tectonic_errors::Error;

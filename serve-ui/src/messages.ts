@@ -55,6 +55,8 @@ const YarnOutputMessage = S.struct({
     }),
 });
 
+export type YarnOutputMessage = S.Schema.To<typeof YarnOutputMessage>;
+
 // S.attachPropertySignature might be helpful here but it causes TypeScript
 // errors for me.
 const Message = S.union(
