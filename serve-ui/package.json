@@ -11,6 +11,8 @@
     "type-check": "vue-tsc --build --force"
   },
   "dependencies": {
+    "@effect/schema": "^0.63",
+    "effect": "^2.3",
     "naive-ui": "^2.37",
     "vue": "^3.4.15"
   },

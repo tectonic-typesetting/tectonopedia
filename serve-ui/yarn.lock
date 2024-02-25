@@ -66,6 +66,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@effect/schema@npm:^0.63":
+  version: 0.63.0
+  resolution: "@effect/schema@npm:0.63.0"
+  peerDependencies:
+    effect: ^2.4.0
+    fast-check: ^3.13.2
+  checksum: 0085a81eb8495ede81ca8f0ba8c7a2bc28f4e5f56431debe34e40dae7d23e190b4bde8ed2347e0a2b575a59b12e12be9ec78451b7d96ca12ba2862ad0fbbb53b
+  languageName: node
+  linkType: hard
+
 "@emotion/hash@npm:~0.8.0":
   version: 0.8.0
   resolution: "@emotion/hash@npm:0.8.0"
@@ -806,6 +816,13 @@ __metadata:
   version: 0.2.0
   resolution: "eastasianwidth@npm:0.2.0"
   checksum: 7d00d7cd8e49b9afa762a813faac332dee781932d6f2c848dc348939c4253f1d4564341b7af1d041853bc3f32c2ef141b58e0a4d9862c17a7f08f68df1e0f1ed
+  languageName: node
+  linkType: hard
+
+"effect@npm:^2.3":
+  version: 2.4.0
+  resolution: "effect@npm:2.4.0"
+  checksum: 799cbe867c28fe330fde65fcf89b618bea6ebd70d36a4c195352b3f24abcacbfa4dd682a2ed75520e658ab4e06c309010fb56e3944fee6e80c5b4b0373dd982b
   languageName: node
   linkType: hard
 
@@ -1622,10 +1639,12 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "serve-ui@workspace:."
   dependencies:
+    "@effect/schema": ^0.63
     "@tsconfig/node20": ^20.1.2
     "@types/node": ^20.11.10
     "@vitejs/plugin-vue": ^5.0.3
     "@vue/tsconfig": ^0.5.1
+    effect: ^2.3
     naive-ui: ^2.37
     npm-run-all2: ^6.1.1
     typescript: ~5.3.0
