@@ -26,10 +26,13 @@ socket.addEventListener("message", (event) => {
   }
 });
 
+function onTrigger() {
+  socket.send("trigger_build");
+}
+
 function onQuit() {
   socket.send("quit");
 }
-
 </script>
 
 <template>
@@ -38,7 +41,8 @@ function onQuit() {
     <n-card title="Tectonopedia Build UI">
       <template #header-extra>
         <nav>
-          <n-button @click="onQuit">Quit</n-button>
+          <n-button @click="onTrigger" strong secondary type="info">Trigger Build</n-button>
+          <n-button @click="onQuit" strong secondary type="error">Quit</n-button>
         </nav>
       </template>
 
@@ -59,5 +63,6 @@ function onQuit() {
 nav {
   display: flex;
   flex-direction: row;
+  gap: 1rem;
 }
 </style>

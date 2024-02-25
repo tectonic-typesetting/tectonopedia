@@ -366,6 +366,13 @@ async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp
         };
 
         match msg.to_str() {
+            Ok("trigger_build") => {
+                if let Err(e) = command_tx.send(ServeCommand::Build).await {
+                    println!("error in WebSocket client handler notifying main task: {e:?}");
+                    break;
+                }
+            }
+
             Ok("quit") => {
                 if let Err(e) = command_tx.send(ServeCommand::Quit(Ok(()))).await {
                     println!("error in WebSocket client handler notifying main task: {e:?}");
