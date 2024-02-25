@@ -484,7 +484,7 @@ async fn process_input_finish<P: TexProcessor, B: MessageBus>(
     if let Err(e) = cache.finalize_operation(ocd, indices) {
         bus.error(
             "failed to save caching information for a build step",
-            Some(&e.into()),
+            Some(&e),
         )
         .await;
     }

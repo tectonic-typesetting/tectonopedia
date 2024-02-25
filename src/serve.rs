@@ -284,13 +284,13 @@ impl ServeArgs {
 
         clients.post(&Message::ServerQuitting).await;
 
-        if let Err(_) = yarn_quit_tx.send(()) {
+        if yarn_quit_tx.send(()).is_err() {
             eprintln!("error: failed to send shutdown signal to the `yarn serve` subprocess");
         } else if let Err(e) = yarn_join.await {
             eprintln!("error waiting for `yarn serve` subprocess to finish: {e}");
         }
 
-        if let Err(_) = warp_quit_tx.send(()) {
+        if warp_quit_tx.send(()).is_err() {
             eprintln!("error: failed to send shutdown signal to the Warp webserver task");
         } else if let Err(e) = warp_join.await {
             eprintln!("error waiting for Warp webserver task to finish: {e}");

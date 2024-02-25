@@ -104,6 +104,7 @@ async fn primary_build_implementation<T: MessageBus>(
     let (mut bus_tx, bus_rx) = new_sync_bus_channel();
 
     let handle = spawn_blocking(
+        #[allow(clippy::type_complexity)]
         move || -> Result<(Vec<RuntimeEntityIdent>, RuntimeEntityIdent, Vec<RuntimeEntity>, index::IndexCollection, cache::Cache)> {
             let (asset_ids, metadata_ids) = p1r.unpack();
 
