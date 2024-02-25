@@ -2870,6 +2870,7 @@ dependencies = [
  "libc",
  "notify-debouncer-mini",
  "num_cpus",
+ "open",
  "serde",
  "serde_json",
  "sha2",

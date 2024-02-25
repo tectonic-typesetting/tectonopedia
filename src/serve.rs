@@ -35,6 +35,9 @@ use crate::{
 /// The serve operation.
 #[derive(Args, Debug)]
 pub struct ServeArgs {
+    #[arg(long, short = 'o')]
+    open: bool,
+
     #[arg(long, short = 'j', default_value_t = 0)]
     parallel: usize,
 }
@@ -132,8 +135,14 @@ impl ServeArgs {
 
         // Set up `yarn serve` for the app
 
+        let yarn_serve_port = 1234;
         let (yarn_quit_tx, yarn_quit_rx) = oneshot::channel();
-        let yarn_server = YarnServer::new(1234, yarn_quit_rx, command_tx.clone(), clients.clone())?;
+        let yarn_server = YarnServer::new(
+            yarn_serve_port,
+            yarn_quit_rx,
+            command_tx.clone(),
+            clients.clone(),
+        )?;
 
         // Signal handling
 
@@ -158,12 +167,23 @@ impl ServeArgs {
         let yarn_join = tokio::task::spawn(yarn_server.serve());
 
         println!();
-        println!("    app listening on:        http://localhost:1234/");
+        println!(
+            "    app listening on:        http://localhost:{}/",
+            yarn_serve_port
+        );
         println!(
             "    build UI listening on:   http://localhost:{}/",
             warp_addr.port()
         );
         println!();
+
+        // Open in the browser, maybe
+
+        if self.open {
+            if let Err(e) = open::that(format!("http://localhost:{}/", warp_addr.port())) {
+                eprintln!("failed to open UI in web browser: {e}");
+            }
+        }
 
         // Our main loop -- watch for incoming commands and build when needed.
 
@@ -364,6 +384,10 @@ async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp
                 break;
             }
         };
+
+        if msg.is_close() {
+            break;
+        }
 
         match msg.to_str() {
             Ok("trigger_build") => {
