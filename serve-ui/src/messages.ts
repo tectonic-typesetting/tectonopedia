@@ -15,24 +15,30 @@ const BuildCompleteMessage = S.struct({
         elapsed: S.number,
     }),
 });
+export type BuildCompleteMessage = S.Schema.To<typeof BuildCompleteMessage>;
 
 const BuildStartedMessage = S.literal("build_started");
+export type BuildStartedMessage = S.Schema.To<typeof BuildStartedMessage>;
 
 const CommandLaunchedMessage = S.struct({
     command_launched: S.string,
 });
+export type CommandLaunchedMessage = S.Schema.To<typeof CommandLaunchedMessage>;
 
 const ErrorMessage = S.struct({
     error: AlertMessage,
 });
+export type ErrorMessage = S.Schema.To<typeof ErrorMessage>;
 
 const NoteMessage = S.struct({
     note: AlertMessage,
 });
+export type NoteMessage = S.Schema.To<typeof NoteMessage>;
 
 const PhaseStartedMessage = S.struct({
     phase_started: S.string,
 });
+export type PhaseStartedMessage = S.Schema.To<typeof PhaseStartedMessage>;
 
 const ServerQuittingMessage = S.literal("server_quitting");
 export type ServerQuittingMessage = S.Schema.To<typeof ServerQuittingMessage>;
@@ -48,6 +54,7 @@ const ToolOutputStream = S.union(
 const WarningMessage = S.struct({
     warning: AlertMessage,
 });
+export type WarningMessage = S.Schema.To<typeof WarningMessage>;
 
 const YarnOutputMessage = S.struct({
     yarn_output: S.struct({

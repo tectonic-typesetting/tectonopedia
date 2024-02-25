@@ -13,7 +13,6 @@ function onYarnOutput(msg: YarnOutputMessage) {
 }
 
 function onServerQuitting(_msg: ServerQuittingMessage) {
-  // The log component seems to elide empty lines, annoyingly.
   log.value += "\n(server quitting)";
 }
 

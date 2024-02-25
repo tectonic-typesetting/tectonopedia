@@ -3,8 +3,10 @@ import { ref, type Ref } from "vue";
 import { NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
 
 import { parseMessage } from "./messages.js";
+import BuildProgressTab from "./BuildProgressTab.vue";
 import YarnServeTab from "./YarnServeTab.vue";
 
+const buildProgressTab: Ref<typeof BuildProgressTab | null> = ref(null);
 const yarnServeTab: Ref<typeof YarnServeTab | null> = ref(null);
 
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
@@ -14,9 +16,18 @@ socket.addEventListener("message", (event) => {
     const structured = JSON.parse(event.data);
     const msg = parseMessage(structured);
 
-    if (msg.hasOwnProperty("yarn_output")) {
+    if (msg.hasOwnProperty("phase_started")) {
+      buildProgressTab.value?.onPhaseStarted(msg);
+    } else if (msg.hasOwnProperty("command_launched")) {
+      buildProgressTab.value?.onCommandLaunched(msg);
+    } else if (msg.hasOwnProperty("yarn_output")) {
       yarnServeTab.value?.onYarnOutput(msg);
+    } else if (msg.hasOwnProperty("build_complete")) {
+      buildProgressTab.value?.onBuildComplete(msg);
+    } else if (msg === "build_started") {
+      buildProgressTab.value?.onBuildStarted(msg);
     } else if (msg === "server_quitting") {
+      buildProgressTab.value?.onServerQuitting(msg);
       yarnServeTab.value?.onServerQuitting(msg);
     } else {
       console.warn("recognized but unhandled message:", msg);
@@ -47,11 +58,11 @@ function onQuit() {
       </template>
 
       <n-tabs type="card" size="large">
-        <n-tab-pane name="build" tab="Build">
-          <p>The build!</p>
+        <n-tab-pane name="progress" tab="Build Progress" display-directive="show">
+          <build-progress-tab ref="buildProgressTab" />
         </n-tab-pane>
 
-        <n-tab-pane name="yarn-serve" tab="yarn serve">
+        <n-tab-pane name="yarn-serve" tab="yarn serve" display-directive="show">
           <yarn-serve-tab ref="yarnServeTab" />
         </n-tab-pane>
       </n-tabs>
