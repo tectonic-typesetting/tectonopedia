@@ -255,6 +255,16 @@ impl SyncMessageBusSender {
     pub fn post(&mut self, msg: Message) {
         self.tx.blocking_send(msg).unwrap();
     }
+
+    pub fn file_error<T1: ToString, T2: ToString>(
+        &mut self,
+        file: T1,
+        message: T2,
+        err: Option<Error>,
+    ) {
+        let alert = AlertMessage::new(Some(file), message, err);
+        self.post(Message::Error(alert))
+    }
 }
 
 impl StatusBackend for SyncMessageBusSender {
