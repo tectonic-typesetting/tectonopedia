@@ -208,6 +208,7 @@ impl WorkerDriver for Pass1Driver {
         if let Some(rest) = record.strip_prefix("assets ") {
             if let Err(e) = writeln!(&mut self.assets, "{}", rest) {
                 let alert = AlertMessage::new(
+                    Some(self.input_path.display()),
                     format!(
                         "error writing asset data to `{}`",
                         self.assets.display_path()
@@ -222,6 +223,7 @@ impl WorkerDriver for Pass1Driver {
         } else if let Some(rest) = record.strip_prefix("meta ") {
             if let Err(e) = writeln!(&mut self.metadata, "{}", rest) {
                 let alert = AlertMessage::new(
+                    Some(self.input_path.display()),
                     format!(
                         "error writing metadata to `{}`",
                         self.metadata.display_path()
@@ -235,6 +237,7 @@ impl WorkerDriver for Pass1Driver {
             }
         } else {
             Some(Message::Warning(AlertMessage::new(
+                Some(self.input_path.display()),
                 format!("unrecognized pass1 stdout record: {}", record),
                 None,
             )))

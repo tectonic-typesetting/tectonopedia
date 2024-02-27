@@ -267,7 +267,7 @@ impl ServeArgs {
                                             let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
 
                                             if let Err(e) = filetime::set_file_mtime(&p, filetime::FileTime::now()) {
-                                                clients.error(format!("unable to update modification time of file `{}`", p), Some(e.into())).await;
+                                                clients.error::<String, _>(None, format!("unable to update modification time of file `{}`", p), Some(e.into())).await;
                                             }
                                         }
 
@@ -278,7 +278,7 @@ impl ServeArgs {
                                         .await;
                                     }
 
-                                    Err(e) => clients.error("build failure", Some(e)).await
+                                    Err(e) => clients.error::<String, _>(None, "build failure", Some(e)).await
                                 }
                             }
                         }

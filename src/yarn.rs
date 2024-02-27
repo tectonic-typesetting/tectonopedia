@@ -54,7 +54,7 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Resul
                         }
 
                         Err(e) => {
-                            bus.error("failed to read child process stdout", Some(e.into())).await;
+                            bus.error::<String, _>(None, "failed to read child process stdout", Some(e.into())).await;
                         }
 
                         _ => {}
@@ -71,7 +71,7 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Resul
                         }
 
                         Err(e) => {
-                            bus.error("failed to read child process stderr", Some(e.into())).await;
+                            bus.error::<String, _>(None, "failed to read child process stderr", Some(e.into())).await;
                         }
 
                         _ => {}

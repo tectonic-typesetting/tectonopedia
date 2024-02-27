@@ -3,7 +3,7 @@
 
 //! Messages that describe the progress of build operations.
 //!
-//! These messages are used by the "watch UI" and `build` CLI
+//! These messages are used by the "serve UI" and `build` CLI
 //! to update the user on how the build is going.
 //!
 //! See also /serve-ui/src/messages.ts, which defines TypeScript types
@@ -19,21 +19,23 @@ use tokio::sync::mpsc;
 pub trait MessageBus: Clone + Send {
     fn post(&mut self, msg: Message) -> impl Future<Output = ()> + Send;
 
-    fn error<T: ToString>(
+    fn error<T1: ToString, T2: ToString>(
         &mut self,
-        message: T,
+        file: Option<T1>,
+        message: T2,
         err: Option<Error>,
     ) -> impl Future<Output = ()> + Send {
-        let alert = AlertMessage::new(message, err);
+        let alert = AlertMessage::new(file, message, err);
         self.post(Message::Error(alert))
     }
 
-    fn warning<T: ToString>(
+    fn warning<T1: ToString, T2: ToString>(
         &mut self,
-        message: T,
+        file: Option<T1>,
+        message: T2,
         err: Option<Error>,
     ) -> impl Future<Output = ()> + Send {
-        let alert = AlertMessage::new(message, err);
+        let alert = AlertMessage::new(file, message, err);
         self.post(Message::Warning(alert))
     }
 }
@@ -98,6 +100,9 @@ pub struct BuildCompleteMessage {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AlertMessage {
+    /// The source file that this message is associated with, if any
+    pub file: Option<String>,
+
     /// The essential message
     pub message: String,
 
@@ -106,8 +111,13 @@ pub struct AlertMessage {
 }
 
 impl AlertMessage {
-    pub fn new<T: ToString>(message: T, err: Option<Error>) -> Self {
+    pub fn new<T1: ToString, T2: ToString>(
+        file: Option<T1>,
+        message: T2,
+        err: Option<Error>,
+    ) -> Self {
         let mut alert = AlertMessage {
+            file: file.map(|t| t.to_string()),
             message: message.to_string(),
             context: Default::default(),
         };
@@ -250,6 +260,7 @@ impl SyncMessageBusSender {
 impl StatusBackend for SyncMessageBusSender {
     fn report(&mut self, kind: MessageKind, args: std::fmt::Arguments<'_>, err: Option<&Error>) {
         let mut alert = AlertMessage {
+            file: None,
             message: format!("{}", args),
             context: Default::default(),
         };
@@ -271,6 +282,7 @@ impl StatusBackend for SyncMessageBusSender {
 
     fn dump_error_logs(&mut self, _output: &[u8]) {
         self.post(Message::Error(AlertMessage {
+            file: None,
             message: "(internal error: TeX error log should not get here)".into(),
             context: Default::default(),
         }));

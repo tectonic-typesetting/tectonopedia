@@ -11,7 +11,6 @@
 use futures::Future;
 use std::path::PathBuf;
 use tectonic_errors::prelude::*;
-use tectonic_status_base::{tt_error, StatusBackend};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{ChildStdin, Command},
@@ -24,7 +23,6 @@ use crate::{
     index::IndexCollection,
     messages::{bus_to_status, AlertMessage, Message, MessageBus},
     operation::{DigestData, RuntimeEntityIdent},
-    worker_status::WorkerStatusBackend,
 };
 
 #[derive(Debug)]
@@ -157,6 +155,7 @@ pub trait WorkerDriver: Send {
 
 async fn process_one_input<W: WorkerDriver, B: MessageBus>(
     mut driver: W,
+    input_path: String,
     self_path: PathBuf,
     mut bus: B,
 ) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
@@ -172,8 +171,12 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            bus.error("failed to relaunch self as TeX worker", Some(e.into()))
-                .await;
+            bus.error(
+                Some(input_path),
+                "failed to relaunch self as TeX worker",
+                Some(e.into()),
+            )
+            .await;
             return Err(WorkerError::General(()));
         }
     };
@@ -184,8 +187,12 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
         let stdin = child.stdin.take().unwrap();
 
         if let Err(e) = driver.send_stdin(stdin).await {
-            bus.error("failed to send input to TeX worker", Some(e))
-                .await;
+            bus.error(
+                Some(input_path),
+                "failed to send input to TeX worker",
+                Some(e),
+            )
+            .await;
             return Err(WorkerError::Specific(()));
         }
     }
@@ -212,16 +219,24 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
                         }
                     }
                 } else {
-                    bus.warning(format!("unexpected stdout content: {}", line), None)
-                        .await;
+                    bus.warning(
+                        Some(input_path.clone()),
+                        format!("unexpected stdout content: {}", line),
+                        None,
+                    )
+                    .await;
                 }
             }
 
             Ok(None) => break,
 
             Err(e) => {
-                bus.warning("error reading worker stdout", Some(e.into()))
-                    .await;
+                bus.warning(
+                    Some(input_path.clone()),
+                    "error reading worker stdout",
+                    Some(e.into()),
+                )
+                .await;
                 break;
             }
         }
@@ -232,8 +247,12 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
     let ec = match child.wait().await {
         Ok(c) => c,
         Err(e) => {
-            bus.error("failed to wait() for TeX worker", Some(e.into()))
-                .await;
+            bus.error(
+                Some(input_path),
+                "failed to wait() for TeX worker",
+                Some(e.into()),
+            )
+            .await;
             return Err(error_type);
         }
     };
@@ -242,6 +261,7 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
         (true, WorkerError::Specific(_)) => {} // this is the default case
         (true, WorkerError::General(_)) => {
             bus.warning(
+                Some(input_path),
                 "TeX worker had a successful exit code but reported failure",
                 None,
             )
@@ -256,12 +276,14 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
 
         Err(e) => match e {
             WorkerError::General(e) => {
-                bus.error("error finalizing results", Some(e)).await;
+                bus.error(Some(input_path), "error finalizing results", Some(e))
+                    .await;
                 Err(WorkerError::General(()))
             }
 
             WorkerError::Specific(e) => {
-                bus.error("error finalizing results", Some(e)).await;
+                bus.error(Some(input_path), "error finalizing results", Some(e))
+                    .await;
                 Err(WorkerError::Specific(()))
             }
         },
@@ -341,12 +363,7 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
 
     for input in inputs {
         let input = *input;
-
-        // Set up a custom status reporter for this input path.
-        let mut item_status = {
-            let path = indices.relpath_for_tex_source(input).unwrap();
-            Box::new(WorkerStatusBackend::new(path)) as Box<dyn StatusBackend + Send>
-        };
+        let input_path = indices.relpath_for_tex_source(input).unwrap().to_owned();
 
         // In principle this could/should be a WorkerError, but the distinction
         // doesn't seem super important.
@@ -379,11 +396,11 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
 
             Err(WorkerError::General(e)) => {
                 n_failures += 1;
-                tt_error!(item_status, "prep failed"; e);
-                bus.post(Message::Error(AlertMessage {
-                    message: "giving up early".into(),
-                    context: Default::default(),
-                }))
+                bus.error(
+                    Some(input_path.clone()),
+                    "giving up early".to_owned(),
+                    Some(e),
+                )
                 .await;
                 break; // give up
             }
@@ -394,7 +411,12 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
                 // something is messed up that will break all of the
                 // builds.
                 n_failures += 1;
-                tt_error!(item_status, "prep failed"; e);
+                bus.error(
+                    Some(input_path.clone()),
+                    "giving up early".to_owned(),
+                    Some(e),
+                )
+                .await;
 
                 // By `continue`-ing here, we are discarding the opinfo and
                 // not including this input in any subsequent processing.
@@ -406,9 +428,10 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
         let tx = tx.clone();
         let sp = self_path.clone();
         let bc = bus.clone();
+        let ip = input_path.clone();
 
         pool.spawn(async move {
-            tx.send(process_one_input(driver, sp, bc).await)
+            tx.send(process_one_input(driver, ip, sp, bc).await)
                 .await
                 .expect("channel waits for pool result");
         })
@@ -426,6 +449,7 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
                     Err(WorkerError::General(_)) => {
                         n_failures += 1;
                         bus.post(Message::Error(AlertMessage {
+                            file: Some(input_path.clone()),
                             message: "giving up early".into(),
                             context: Default::default(),
                         }))
@@ -495,7 +519,8 @@ async fn process_input_finish<P: TexProcessor, B: MessageBus>(
     // Since any failure only involves the caching step, not the actual build
     // operation, we'll report it but not flag the error at a higher level.
     if let Err(e) = cache.finalize_operation(ocd, indices) {
-        bus.error(
+        bus.error::<String, _>(
+            None,
             "failed to save caching information for a build step",
             Some(e),
         )

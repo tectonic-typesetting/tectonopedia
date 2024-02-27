@@ -242,6 +242,7 @@ pub async fn build_through_index<T: MessageBus + 'static>(
             Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
                 // TODO: add a --force option and/or a `clean` subcommand
                 bus.post(Message::Error(AlertMessage {
+                    file: None,
                     message: "failed to create directory `staging` - it already exists".into(),
                     context: vec![
                         "is another \"build\" or \"serve\" process running?".into(),
