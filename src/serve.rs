@@ -225,7 +225,7 @@ impl ServeArgs {
                             }
 
                             ServeCommand::ClientConnected => {
-                                clients.post(&Message::ServerInfo(info_message.clone())).await;
+                                clients.post(Message::ServerInfo(info_message.clone())).await;
 
                                 // Trigger a build (awkwardly). In the standard
                                 // setup, this means that we'll only kick off
@@ -257,7 +257,7 @@ impl ServeArgs {
                                     tokio::time::sleep(Duration::from_secs(1).mul_f32(YARN_STARTUP_TIME)).await;
                                 }
 
-                                clients.post(&Message::BuildStarted).await;
+                                clients.post(Message::BuildStarted).await;
 
                                 match build_through_index(n_workers, true, clients.clone()).await {
                                     Ok((t0, changed)) => {
@@ -267,18 +267,18 @@ impl ServeArgs {
                                             let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
 
                                             if let Err(e) = filetime::set_file_mtime(&p, filetime::FileTime::now()) {
-                                                clients.error(format!("unable to update modification time of file `{}`", p), Some(&e.into())).await;
+                                                clients.error(format!("unable to update modification time of file `{}`", p), Some(e.into())).await;
                                             }
                                         }
 
-                                        clients.post(&Message::BuildComplete(BuildCompleteMessage {
+                                        clients.post(Message::BuildComplete(BuildCompleteMessage {
                                             success: true,
                                             elapsed: t0.elapsed().as_secs_f32(),
                                         }))
                                         .await;
                                     }
 
-                                    Err(e) => clients.error("build failure", Some(&e)).await
+                                    Err(e) => clients.error("build failure", Some(e)).await
                                 }
                             }
                         }
@@ -310,7 +310,7 @@ impl ServeArgs {
 
         // Shutdown
 
-        clients.post(&Message::ServerQuitting).await;
+        clients.post(Message::ServerQuitting).await;
 
         if yarn_quit_tx.send(()).is_err() {
             eprintln!("error: failed to send shutdown signal to the `yarn serve` subprocess");
@@ -479,8 +479,8 @@ struct Client {
 type WarpClientCollection = Arc<Mutex<Vec<Client>>>;
 
 impl MessageBus for WarpClientCollection {
-    async fn post(&mut self, msg: &Message) {
-        let ws_msg = WsMessage::text(serde_json::to_string(msg).unwrap());
+    async fn post(&mut self, msg: Message) {
+        let ws_msg = WsMessage::text(serde_json::to_string(&msg).unwrap());
 
         for c in &*self.lock().await {
             // Assume that failure is a disconnected client; just ignore it??

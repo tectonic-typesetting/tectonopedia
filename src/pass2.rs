@@ -31,6 +31,7 @@ use crate::{
     cache::{Cache, OpCacheData},
     gtry,
     index::IndexCollection,
+    messages::Message,
     metadata::Metadatum,
     ogtry,
     operation::{DigestComputer, DigestData, RuntimeEntity, RuntimeEntityIdent},
@@ -327,7 +328,9 @@ impl WorkerDriver for Pass2Driver {
 
     // TODO: record additional inputs if/when they are detected
 
-    fn process_output_record(&mut self, _record: &str, _status: &mut dyn StatusBackend) {}
+    fn process_output_record(&mut self, _record: &str) -> Option<Message> {
+        None
+    }
 
     fn finish(self) -> Result<(OpCacheData, Pass2OpInfo), WorkerError<Error>> {
         Ok((self.cache_data, self.opinfo))

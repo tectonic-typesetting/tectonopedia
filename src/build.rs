@@ -43,7 +43,7 @@ use crate::{
 /// modified during this build process, if the boolean argument is true. The
 /// list may be empty if nothing actually changed, or if the argument is false.
 /// This list is used in "watch" mode to efficiently update Parcel.js.
-async fn primary_build_implementation<T: MessageBus>(
+async fn primary_build_implementation<T: MessageBus + 'static>(
     n_workers: usize,
     collect_paths: bool,
     mut bus: T,
@@ -88,7 +88,7 @@ async fn primary_build_implementation<T: MessageBus>(
 
     // First TeX pass of indexing and gathering font/asset information.
 
-    bus.post(&Message::PhaseStarted("pass-1".into())).await;
+    bus.post(Message::PhaseStarted("pass-1".into())).await;
 
     let mut p1r = pass1::Pass1Processor::default();
     let _n_processed = tex_pass::process_inputs(
@@ -141,7 +141,7 @@ async fn primary_build_implementation<T: MessageBus>(
 
     // TeX pass 2, emitting
 
-    bus.post(&Message::PhaseStarted("pass-2".into())).await;
+    bus.post(Message::PhaseStarted("pass-2".into())).await;
 
     let mut p2r = pass2::Pass2Processor::new(metadata_ids, merged_assets_id, &indices)?;
     tex_pass::process_inputs(
@@ -214,7 +214,7 @@ async fn primary_build_implementation<T: MessageBus>(
     Ok(paths)
 }
 
-pub async fn build_through_index<T: MessageBus>(
+pub async fn build_through_index<T: MessageBus + 'static>(
     n_workers: usize,
     collect_paths: bool,
     mut bus: T,
@@ -224,7 +224,7 @@ pub async fn build_through_index<T: MessageBus>(
     // "Claim" the existing build tree to enable an incremental build,
     // or create a new one from scratch if needed.
 
-    bus.post(&Message::PhaseStarted("claim-tree".into())).await;
+    bus.post(Message::PhaseStarted("claim-tree".into())).await;
 
     match fs::rename("build", "staging") {
         // Success - we will do a nice incremental build
@@ -241,7 +241,7 @@ pub async fn build_through_index<T: MessageBus>(
 
             Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
                 // TODO: add a --force option and/or a `clean` subcommand
-                bus.post(&Message::Error(AlertMessage {
+                bus.post(Message::Error(AlertMessage {
                     message: "failed to create directory `staging` - it already exists".into(),
                     context: vec![
                         "is another \"build\" or \"serve\" process running?".into(),
@@ -266,7 +266,7 @@ pub async fn build_through_index<T: MessageBus>(
 
     // De-stage for `yarn` ops and make the fulltext index.
 
-    bus.post(&Message::PhaseStarted("index-text".into())).await;
+    bus.post(Message::PhaseStarted("index-text".into())).await;
 
     atry!(
         fs::rename("staging", "build");
@@ -324,7 +324,7 @@ impl BuildArgs {
         let (t0, _) = build_through_index(n_workers, false, bus.clone()).await?;
 
         if !self.no_dist {
-            bus.post(&Message::PhaseStarted("yarn-build".into())).await;
+            bus.post(Message::PhaseStarted("yarn-build".into())).await;
 
             atry!(
                 yarn::yarn_build(bus.clone(), false).await;
@@ -332,7 +332,7 @@ impl BuildArgs {
             );
         }
 
-        bus.post(&Message::BuildComplete(BuildCompleteMessage {
+        bus.post(Message::BuildComplete(BuildCompleteMessage {
             success: true,
             elapsed: t0.elapsed().as_secs_f32(),
         }))

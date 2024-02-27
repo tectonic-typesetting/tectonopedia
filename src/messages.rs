@@ -9,6 +9,7 @@
 //! See also /serve-ui/src/messages.ts, which defines TypeScript types
 //! mirroring these.
 
+use futures::Future;
 use std::sync::{Arc, Mutex};
 use tectonic_errors::Error;
 use tectonic_status_base::{tt_error, tt_note, tt_warning, MessageKind, StatusBackend};
@@ -16,21 +17,24 @@ use tokio::sync::mpsc;
 
 /// A trait for types that can distribute messages
 pub trait MessageBus: Clone + Send {
-    async fn post(&mut self, msg: &Message);
+    fn post(&mut self, msg: Message) -> impl Future<Output = ()> + Send;
 
-    async fn error<T: ToString>(&mut self, message: T, err: Option<&Error>) {
-        let mut alert = AlertMessage {
-            message: message.to_string(),
-            context: Default::default(),
-        };
+    fn error<T: ToString>(
+        &mut self,
+        message: T,
+        err: Option<Error>,
+    ) -> impl Future<Output = ()> + Send {
+        let alert = AlertMessage::new(message, err);
+        self.post(Message::Error(alert))
+    }
 
-        if let Some(e) = err {
-            for item in e.chain() {
-                alert.context.push(item.to_string());
-            }
-        }
-
-        self.post(&Message::Error(alert)).await;
+    fn warning<T: ToString>(
+        &mut self,
+        message: T,
+        err: Option<Error>,
+    ) -> impl Future<Output = ()> + Send {
+        let alert = AlertMessage::new(message, err);
+        self.post(Message::Warning(alert))
     }
 }
 
@@ -101,6 +105,23 @@ pub struct AlertMessage {
     pub context: Vec<String>,
 }
 
+impl AlertMessage {
+    pub fn new<T: ToString>(message: T, err: Option<Error>) -> Self {
+        let mut alert = AlertMessage {
+            message: message.to_string(),
+            context: Default::default(),
+        };
+
+        if let Some(e) = err {
+            for item in e.chain() {
+                alert.context.push(item.to_string());
+            }
+        }
+
+        alert
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ServerInfoMessage {
@@ -153,7 +174,7 @@ impl CliStatusMessageBus {
 }
 
 impl MessageBus for CliStatusMessageBus {
-    async fn post(&mut self, msg: &Message) {
+    async fn post(&mut self, msg: Message) {
         match msg {
             Message::CommandLaunched(d) => {
                 tt_note!(self.status.lock().unwrap(), "running `{d}`");
@@ -263,7 +284,7 @@ pub struct SyncMessageBusReceiver {
 impl SyncMessageBusReceiver {
     pub async fn drain<T: MessageBus>(mut self, mut bus: T) {
         while let Some(msg) = self.rx.recv().await {
-            bus.post(&msg).await;
+            bus.post(msg).await;
         }
     }
 }

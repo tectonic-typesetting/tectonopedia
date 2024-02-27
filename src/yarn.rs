@@ -25,7 +25,7 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Resul
             .stderr(std::process::Stdio::piped());
     }
 
-    bus.post(&Message::CommandLaunched(format!("yarn {}", command)))
+    bus.post(Message::CommandLaunched(format!("yarn {}", command)))
         .await;
 
     let mut child = atry!(
@@ -47,14 +47,14 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Resul
                 line = stdout_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            bus.post(&Message::ToolOutput(ToolOutputMessage {
+                            bus.post(Message::ToolOutput(ToolOutputMessage {
                                 stream: ToolOutputStream::Stdout,
                                 lines: vec![line],
                             })).await;
                         }
 
                         Err(e) => {
-                            bus.error("failed to read child process stdout", Some(&e.into())).await;
+                            bus.error("failed to read child process stdout", Some(e.into())).await;
                         }
 
                         _ => {}
@@ -64,14 +64,14 @@ async fn do_yarn<T: MessageBus>(command: &str, mut bus: T, piped: bool) -> Resul
                 line = stderr_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            bus.post(&Message::ToolOutput(ToolOutputMessage {
+                            bus.post(Message::ToolOutput(ToolOutputMessage {
                                 stream: ToolOutputStream::Stderr,
                                 lines: vec![line],
                             })).await;
                         }
 
                         Err(e) => {
-                            bus.error("failed to read child process stderr", Some(&e.into())).await;
+                            bus.error("failed to read child process stderr", Some(e.into())).await;
                         }
 
                         _ => {}
@@ -178,7 +178,7 @@ impl<T: MessageBus> YarnServer<T> {
                 line = stdout_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            self.bus.post(&Message::YarnServeOutput(ToolOutputMessage {
+                            self.bus.post(Message::YarnServeOutput(ToolOutputMessage {
                                 stream: ToolOutputStream::Stdout,
                                 lines: vec![line],
                             })).await;
@@ -195,7 +195,7 @@ impl<T: MessageBus> YarnServer<T> {
                 line = stderr_lines.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            self.bus.post(&Message::YarnServeOutput(ToolOutputMessage {
+                            self.bus.post(Message::YarnServeOutput(ToolOutputMessage {
                                 stream: ToolOutputStream::Stderr,
                                 lines: vec![line],
                             })).await;
