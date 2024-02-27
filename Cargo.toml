@@ -25,7 +25,6 @@ tectonic_engine_spx2html = "0.3"
 tectonic_errors = "0.2"
 tectonic_status_base = "0.2"
 tempfile = "^3.4"
-termcolor = "^1.1"
 threadpool = "^1.8"
 tokio = { version = "^1.36", features = ["macros", "sync", "rt-multi-thread"] }
 tokio-stream = "0.1"

@@ -2881,7 +2881,6 @@ dependencies = [
  "tectonic_errors",
  "tectonic_status_base",
  "tempfile",
- "termcolor",
  "threadpool",
  "tokio",
  "tokio-stream",

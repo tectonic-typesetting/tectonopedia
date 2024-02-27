@@ -40,7 +40,7 @@ pub trait MessageBus: Clone + Send {
     }
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Message {
     /// A build process has started. In "serve" mode this will happen
@@ -90,14 +90,14 @@ pub enum Message {
     ServerQuitting,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BuildCompleteMessage {
     pub success: bool,
     pub elapsed: f32,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AlertMessage {
     /// The source file that this message is associated with, if any
@@ -132,7 +132,7 @@ impl AlertMessage {
     }
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ServerInfoMessage {
     /// The port at which the actual app is running. We express it as a port,
@@ -144,14 +144,14 @@ pub struct ServerInfoMessage {
     pub n_workers: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ToolOutputMessage {
     pub stream: ToolOutputStream,
     pub lines: Vec<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolOutputStream {
     Stdout,

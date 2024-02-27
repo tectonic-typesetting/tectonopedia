@@ -207,7 +207,19 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
 
         match line {
             Ok(Some(line)) => {
-                if let Some(rest) = line.strip_prefix("pedia:") {
+                if let Some(rest) = line.strip_prefix("pedia-msg:") {
+                    match serde_json::from_str(rest) {
+                        Ok(msg) => bus.post(msg).await,
+                        Err(e) => {
+                            bus.warning(
+                                Some(input_path.clone()),
+                                format!("failed to parse JSON message from child: {}", rest),
+                                Some(e.into()),
+                            )
+                            .await
+                        }
+                    }
+                } else if let Some(rest) = line.strip_prefix("pedia:") {
                     match rest {
                         "general-error" => {
                             error_type = WorkerError::General(());
