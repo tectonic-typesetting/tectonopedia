@@ -19,7 +19,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tectonic_errors::prelude::*;
 use tectonic_status_base::{tt_note, StatusBackend};
@@ -177,6 +177,7 @@ impl ServeArgs {
 
         let warp_join = tokio::task::spawn(warp_server);
         let yarn_join = tokio::task::spawn(yarn_server.serve());
+        let yarn_start_time = Instant::now();
 
         let app_url = format!("http://localhost:{yarn_serve_port}/");
         let ui_url = format!("http://localhost:{}/", warp_addr.port());
@@ -238,6 +239,24 @@ impl ServeArgs {
                             }
 
                             ServeCommand::Build => {
+                                // If we try to build before `yarn serve` has
+                                // really started up, the `build` directory
+                                // might be moved to `staging` when yarn is
+                                // first looking for it, causing it to error out
+                                // and never start serving. You could imagine
+                                // some fancy interlocks to try to make sure
+                                // that yarn has fully initialized before we
+                                // build ... but that seems complicated. Let's
+                                // just make sure that it's had a second to
+                                // start up.
+
+                                let time_since_yarn = yarn_start_time.elapsed();
+                                const YARN_STARTUP_TIME: f32 = 1.0; // seconds
+
+                                if time_since_yarn.as_secs_f32() < YARN_STARTUP_TIME {
+                                    tokio::time::sleep(Duration::from_secs(1).mul_f32(YARN_STARTUP_TIME)).await;
+                                }
+
                                 clients.post(&Message::BuildStarted).await;
 
                                 match build_through_index(n_workers, true, clients.clone()).await {
