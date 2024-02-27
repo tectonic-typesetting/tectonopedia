@@ -3,12 +3,16 @@
 import { ref, type Ref } from "vue";
 
 import type {
+  AlertMessage,
   BuildCompleteMessage,
   BuildStartedMessage,
   CommandLaunchedMessage,
+  ErrorMessage,
+  NoteMessage,
   PhaseStartedMessage,
   ServerQuittingMessage,
   ToolOutputMessage,
+  WarningMessage,
 } from "./messages.js";
 
 // Styled chunks of log content
@@ -52,8 +56,31 @@ function onToolOutput(msg: ToolOutputMessage) {
   if (msg.tool_output.stream == "stderr") {
     appendSpan("error", text);
   } else {
-    appendSpan("defaul", text);
+    appendSpan("default", text);
   }
+}
+
+function onAlert(cls: string, prefix: string, msg: AlertMessage) {
+  let text = `${prefix}: ${msg.message}`;
+
+  if (msg.context.length > 0) {
+    text += "\n  " + msg.context.join("\n  ");
+  }
+
+  text += "\n";
+  appendSpan(cls, text);
+}
+
+function onNote(msg: NoteMessage) {
+  onAlert("default", "note", msg.note);
+}
+
+function onWarning(msg: WarningMessage) {
+  onAlert("warning", "warning", msg.warning);
+}
+
+function onError(msg: ErrorMessage) {
+  onAlert("error", "error", msg.error);
 }
 
 function onBuildComplete(msg: BuildCompleteMessage) {
@@ -74,9 +101,12 @@ defineExpose({
   onBuildComplete,
   onBuildStarted,
   onCommandLaunched,
+  onError,
+  onNote,
   onPhaseStarted,
   onServerQuitting,
   onToolOutput,
+  onWarning,
 });
 </script>
 
@@ -99,6 +129,11 @@ defineExpose({
 .success {
   font-weight: bold;
   color: rgb(138, 228, 138);
+}
+
+.warning {
+  font-weight: bold;
+  color: rgb(222, 210, 46);
 }
 
 .error {

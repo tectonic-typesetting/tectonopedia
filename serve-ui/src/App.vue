@@ -26,6 +26,12 @@ socket.addEventListener("message", (event) => {
       buildProgressTab.value?.onCommandLaunched(msg);
     } else if (msg.hasOwnProperty("tool_output")) {
       buildProgressTab.value?.onToolOutput(msg);
+    } else if (msg.hasOwnProperty("note")) {
+      buildProgressTab.value?.onNote(msg);
+    } else if (msg.hasOwnProperty("warning")) {
+      buildProgressTab.value?.onWarning(msg);
+    } else if (msg.hasOwnProperty("error")) {
+      buildProgressTab.value?.onError(msg);
     } else if (msg.hasOwnProperty("yarn_serve_output")) {
       yarnServeTab.value?.onYarnServeOutput(msg);
     } else if (msg.hasOwnProperty("build_complete")) {

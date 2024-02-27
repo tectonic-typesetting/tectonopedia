@@ -8,6 +8,7 @@ const AlertMessage = S.struct({
     message: S.string,
     context: S.array(S.string),
 });
+export type AlertMessage = S.Schema.To<typeof AlertMessage>;
 
 const BuildCompleteMessage = S.struct({
     build_complete: S.struct({
