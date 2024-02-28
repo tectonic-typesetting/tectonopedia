@@ -64,13 +64,21 @@ socket.addEventListener("message", (event) => {
 export interface BadgeInfo {
   kind: "error" | "warning" | "info";
   value: number;
+  processing: boolean;
 }
 
-const outputBadge = ref<BadgeInfo>({ kind: "info", value: 0 });
+const outputBadge = ref<BadgeInfo>({ kind: "info", value: 0, processing: false });
+const progressBadge = ref<BadgeInfo>({ kind: "info", value: 0, processing: false });
 
 function onUpdateOutputBadge(kind: "error" | "warning" | "info", value: number) {
   outputBadge.value.value = value;
   outputBadge.value.kind = kind;
+}
+
+function onUpdateProgressBadge(kind: "error" | "warning" | "info", value: number, processing: boolean) {
+  progressBadge.value.value = value;
+  progressBadge.value.kind = kind;
+  progressBadge.value.processing = processing;
 }
 
 // Actions
@@ -105,7 +113,7 @@ function onServerInfo(msg: ServerInfoMessage) {
       </template>
 
       <n-tabs type="card" size="large">
-        <n-tab-pane name="output" tab="Build Outputs" display-directive="show">
+        <n-tab-pane name="output" display-directive="show">
           <template #tab>
             <n-badge :value="outputBadge.value" :type="outputBadge.kind">
               <span class="tablabel">Build Outputs</span>
@@ -115,7 +123,12 @@ function onServerInfo(msg: ServerInfoMessage) {
         </n-tab-pane>
 
         <n-tab-pane name="progress" tab="Build Progress" display-directive="show">
-          <build-progress-tab ref="buildProgressTab" />
+          <template #tab>
+            <n-badge :value="progressBadge.value" :type="progressBadge.kind" :processing="progressBadge.processing">
+              <span class="tablabel">Build Progress</span>
+            </n-badge>
+          </template>
+          <build-progress-tab ref="buildProgressTab" @updateBadge="onUpdateProgressBadge" />
         </n-tab-pane>
 
         <n-tab-pane name="yarn-serve" tab="yarn serve" display-directive="show">

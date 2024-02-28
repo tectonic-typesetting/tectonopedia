@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The tab reporting overall progress from the active build.
-import { ref, type Ref } from "vue";
+import { ref, watch } from "vue";
 
 import type {
   AlertMessage,
@@ -22,7 +22,7 @@ interface Span {
   content: string,
 }
 
-const spans: Ref<Span[]> = ref([]);
+const spans = ref<Span[]>([]);
 
 function appendSpan(cls: string, content: string) {
   const n = spans.value.length;
@@ -34,11 +34,36 @@ function appendSpan(cls: string, content: string) {
   }
 }
 
-// Events
 
+// Summary stats for the tab-level badge -- we need to propagate this info via
+// an event.
+
+const totalWarnings = ref(0);
+const totalErrors = ref(0);
+const isProcessing = ref(false);
+
+const emit = defineEmits<{
+  updateBadge: [kind: "error" | "warning" | "info", value: number, processing: boolean]
+}>();
+
+watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc]) => {
+  if (totErr > 0) {
+    emit("updateBadge", "error", totErr, isProc);
+  } else if (totWarn > 0) {
+    emit("updateBadge", "warning", totWarn, isProc);
+  } else {
+    emit("updateBadge", "info", 0, isProc);
+  }
+}, { immediate: true })
+
+
+// Events
 
 function onBuildStarted(_msg: BuildStartedMessage) {
   spans.value = [];
+  totalWarnings.value = 0;
+  totalErrors.value = 0;
+  isProcessing.value = true;
   appendSpan("success", `Starting new build at ${new Date().toISOString()}\n`);
 }
 
@@ -73,6 +98,13 @@ function onAlert(cls: string, prefix: string, msg: AlertMessage) {
 
   text += "\n";
   appendSpan(cls, text);
+
+  // This is a litle hacky ...
+  if (cls == "warning") {
+    totalWarnings.value++;
+  } else if (cls == "error") {
+    totalErrors.value++;
+  }
 }
 
 function onNote(msg: NoteMessage) {
@@ -95,10 +127,13 @@ function onBuildComplete(msg: BuildCompleteMessage) {
   } else {
     appendSpan("error", `\nBuild failed after ${e} seconds\n`);
   }
+
+  isProcessing.value = false;
 }
 
 function onServerQuitting(_msg: ServerQuittingMessage) {
   appendSpan("default", "\n(server quitting)");
+  isProcessing.value = false;
 }
 
 defineExpose({

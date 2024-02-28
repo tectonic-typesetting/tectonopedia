@@ -90,8 +90,8 @@ const menuItems = computed(() => {
 });
 
 
-// Summary stats for the tab-level badge -- we need to
-// propagate this info via an event.
+// Summary stats for the tab-level badge -- we need to propagate this info via
+// an event.
 
 const totalWarnings = ref(0);
 const totalErrors = ref(0);
