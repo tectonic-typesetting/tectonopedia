@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, type Ref } from "vue";
-import { NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
+import { NBadge, NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
 
 import { parseMessage, type ServerInfoMessage } from "./messages.js";
 import OutputTab from "./OutputTab.vue";
@@ -57,6 +57,22 @@ socket.addEventListener("message", (event) => {
   }
 });
 
+// Error/warning summaries. It appears that the "tab-pane" components need to be
+// located in this file, so we have to propagate the information up from *Tab
+// components.
+
+export interface BadgeInfo {
+  kind: "error" | "warning" | "info";
+  value: number;
+}
+
+const outputBadge = ref<BadgeInfo>({ kind: "info", value: 0 });
+
+function onUpdateOutputBadge(kind: "error" | "warning" | "info", value: number) {
+  outputBadge.value.value = value;
+  outputBadge.value.kind = kind;
+}
+
 // Actions
 
 function onTrigger() {
@@ -90,7 +106,12 @@ function onServerInfo(msg: ServerInfoMessage) {
 
       <n-tabs type="card" size="large">
         <n-tab-pane name="output" tab="Build Outputs" display-directive="show">
-          <output-tab ref="outputTab" />
+          <template #tab>
+            <n-badge :value="outputBadge.value" :type="outputBadge.kind">
+              <span class="tablabel">Build Outputs</span>
+            </n-badge>
+          </template>
+          <output-tab ref="outputTab" @updateBadge="onUpdateOutputBadge" />
         </n-tab-pane>
 
         <n-tab-pane name="progress" tab="Build Progress" display-directive="show">
@@ -115,5 +136,9 @@ nav {
 
 .app-link {
   font-size: larger;
+}
+
+.tablabel {
+  padding-right: 8px;
 }
 </style>

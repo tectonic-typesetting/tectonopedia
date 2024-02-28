@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The tab reporting build output associated with individual source files.
-import { computed, h, ref } from "vue";
+import { computed, h, ref, watch } from "vue";
 import { NBadge, NMenu, NSplit } from "naive-ui";
 
 import type {
@@ -89,10 +89,34 @@ const menuItems = computed(() => {
   });
 });
 
+
+// Summary stats for the tab-level badge -- we need to
+// propagate this info via an event.
+
+const totalWarnings = ref(0);
+const totalErrors = ref(0);
+
+const emit = defineEmits<{
+  updateBadge: [kind: "error" | "warning" | "info", value: number]
+}>();
+
+watch([totalWarnings, totalErrors], ([totWarn, totErr]) => {
+  if (totErr > 0) {
+    emit("updateBadge", "error", totErr);
+  } else if (totWarn > 0) {
+    emit("updateBadge", "warning", totWarn);
+  } else {
+    emit("updateBadge", "info", 0);
+  }
+}, { immediate: true })
+
+
 // Events
 
 function onBuildStarted(_msg: BuildStartedMessage) {
   files.value.clear();
+  totalWarnings.value = 0;
+  totalErrors.value = 0;
 }
 
 function onAlert(cls: string, prefix: string, msg: AlertMessage) {
@@ -119,8 +143,10 @@ function onAlert(cls: string, prefix: string, msg: AlertMessage) {
   // This is a litle hacky ...
   if (cls == "warning") {
     fdata.n_warnings++;
+    totalWarnings.value++;
   } else if (cls == "error") {
     fdata.n_errors++;
+    totalErrors.value++;
   }
 }
 
