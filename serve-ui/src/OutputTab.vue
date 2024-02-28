@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The tab reporting build output associated with individual source files.
-import { ref, type Ref } from "vue";
-import { type MenuOption, NMenu, NSplit } from "naive-ui";
+import { computed, ref } from "vue";
+import { NMenu, NSplit } from "naive-ui";
 
 import type {
   AlertMessage,
@@ -11,44 +11,72 @@ import type {
   WarningMessage,
 } from "./messages.js";
 
-// Styled chunks of log content
-
-interface Span {
-  cls: string,
-  content: string,
-}
-
-const spans: Ref<Span[]> = ref([]);
-
-function appendSpan(cls: string, content: string) {
-  const n = spans.value.length;
-
-  if (n > 0 && spans.value[n - 1].cls == cls) {
-    spans.value[n - 1].content += content;
-  } else {
-    spans.value.push({ cls, content });
-  }
-}
+import { SpanSet } from "./spanset.js";
 
 // Managing file selection
 
 const selected = ref<string | null>(null);
 
-const menuItems: MenuOption[] = [
-  {
-    label: "txt/foo.tex",
-    key: "txt/foo.tex",
+class FileData {
+  content: SpanSet;
+
+  constructor() {
+    this.content = new SpanSet();
   }
-];
+}
+
+const files = ref<Map<string, FileData>>(new Map());
+
+const selectedSpans = computed(() => {
+  if (selected.value === null) {
+    return new SpanSet();
+  }
+
+  const fdata = files.value.get(selected.value);
+  if (fdata === undefined) {
+    return new SpanSet();
+  }
+
+  return fdata.content;
+});
+
+const menuItems = computed(() => {
+  const items = Array.from(files.value.keys()).sort();
+
+  if (!items.length) {
+    return [{
+      label: "(no files yet)",
+      key: "",
+      disabled: true,
+    }];
+  }
+
+  return items.map((n) => {
+    return {
+      label: n,
+      key: n,
+    }
+  });
+});
 
 // Events
 
 function onBuildStarted(_msg: BuildStartedMessage) {
-  spans.value = [];
-  appendSpan("success", `Starting new build at ${new Date().toISOString()}\n`);
+  files.value.clear();
 }
 
 function onAlert(cls: string, prefix: string, msg: AlertMessage) {
+  if (!msg.file) {
+    return; // Messages not associated with specific files go in the progress tab
+  }
+
+  let fdata = files.value.get(msg.file);
+
+  if (fdata === undefined) {
+    fdata = new FileData();
+    files.value.set(msg.file, fdata);
+  }
+
   let text = `${prefix}: ${msg.message}`;
 
   if (msg.context.length > 0) {
@@ -56,7 +84,7 @@ function onAlert(cls: string, prefix: string, msg: AlertMessage) {
   }
 
   text += "\n";
-  appendSpan(cls, text);
+  fdata.content.append(cls, text);
 }
 
 function onNote(msg: NoteMessage) {
@@ -87,7 +115,8 @@ defineExpose({
       <n-menu v-model:value="selected" :options="menuItems" />
     </template>
     <template #2>
-      <pre class="log"><code ref="code" v-for="s in spans"><span :class="s.cls">{{ s.content }}</span></code></pre>
+      <pre
+        class="log"><code ref="code" v-for="s in selectedSpans.spans"><span :class="s.cls">{{ s.content }}</span></code></pre>
     </template>
   </n-split>
 </template>

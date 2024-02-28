@@ -61,6 +61,10 @@ function onToolOutput(msg: ToolOutputMessage) {
 }
 
 function onAlert(cls: string, prefix: string, msg: AlertMessage) {
+  if (!!msg.file) {
+    return; // Messages associated with specific files go in the output tab
+  }
+
   let text = `${prefix}: ${msg.message}`;
 
   if (msg.context.length > 0) {
