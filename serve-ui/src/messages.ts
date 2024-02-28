@@ -5,6 +5,7 @@ import { formatError } from "@effect/schema/TreeFormatter";
 import * as Either from "effect/Either";
 
 const AlertMessage = S.struct({
+    file: S.optional(S.string),
     message: S.string,
     context: S.array(S.string),
 });

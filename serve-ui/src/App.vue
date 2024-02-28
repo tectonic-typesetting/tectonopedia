@@ -3,9 +3,11 @@ import { ref, type Ref } from "vue";
 import { NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
 
 import { parseMessage, type ServerInfoMessage } from "./messages.js";
+import OutputTab from "./OutputTab.vue";
 import BuildProgressTab from "./BuildProgressTab.vue";
 import YarnServeTab from "./YarnServeTab.vue";
 
+const outputTab: Ref<typeof OutputTab | null> = ref(null);
 const buildProgressTab: Ref<typeof BuildProgressTab | null> = ref(null);
 const yarnServeTab: Ref<typeof YarnServeTab | null> = ref(null);
 
@@ -27,16 +29,20 @@ socket.addEventListener("message", (event) => {
     } else if (msg.hasOwnProperty("tool_output")) {
       buildProgressTab.value?.onToolOutput(msg);
     } else if (msg.hasOwnProperty("note")) {
+      outputTab.value?.onNote(msg);
       buildProgressTab.value?.onNote(msg);
     } else if (msg.hasOwnProperty("warning")) {
+      outputTab.value?.onWarning(msg);
       buildProgressTab.value?.onWarning(msg);
     } else if (msg.hasOwnProperty("error")) {
+      outputTab.value?.onError(msg);
       buildProgressTab.value?.onError(msg);
     } else if (msg.hasOwnProperty("yarn_serve_output")) {
       yarnServeTab.value?.onYarnServeOutput(msg);
     } else if (msg.hasOwnProperty("build_complete")) {
       buildProgressTab.value?.onBuildComplete(msg);
     } else if (msg === "build_started") {
+      outputTab.value?.onBuildStarted(msg);
       buildProgressTab.value?.onBuildStarted(msg);
     } else if (msg === "server_quitting") {
       buildProgressTab.value?.onServerQuitting(msg);
@@ -83,6 +89,10 @@ function onServerInfo(msg: ServerInfoMessage) {
       </template>
 
       <n-tabs type="card" size="large">
+        <n-tab-pane name="output" tab="Build Outputs" display-directive="show">
+          <output-tab ref="outputTab" />
+        </n-tab-pane>
+
         <n-tab-pane name="progress" tab="Build Progress" display-directive="show">
           <build-progress-tab ref="buildProgressTab" />
         </n-tab-pane>
