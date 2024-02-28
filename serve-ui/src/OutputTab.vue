@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The tab reporting build output associated with individual source files.
-import { computed, ref } from "vue";
-import { NMenu, NSplit } from "naive-ui";
+import { computed, h, ref } from "vue";
+import { NBadge, NMenu, NSplit } from "naive-ui";
 
 import type {
   AlertMessage,
@@ -19,22 +19,49 @@ const selected = ref<string | null>(null);
 
 class FileData {
   content: SpanSet;
+  n_warnings: number;
+  n_errors: number;
 
   constructor() {
     this.content = new SpanSet();
+    this.n_warnings = 0;
+    this.n_errors = 0;
+  }
+
+  renderBadge() {
+    let value;
+    let btype;
+
+    if (this.n_errors) {
+      value = this.n_errors;
+      btype = "error";
+    } else if (this.n_warnings) {
+      value = this.n_warnings;
+      btype = "warning";
+    } else {
+      return h("span");
+    }
+
+    return h(NBadge, {
+      value,
+      "type": btype as any,
+    });
   }
 }
 
 const files = ref<Map<string, FileData>>(new Map());
 
+const noFileContent = new SpanSet();
+noFileContent.append("default", "(no file selected)");
+
 const selectedSpans = computed(() => {
   if (selected.value === null) {
-    return new SpanSet();
+    return noFileContent;
   }
 
   const fdata = files.value.get(selected.value);
   if (fdata === undefined) {
-    return new SpanSet();
+    return noFileContent;
   }
 
   return fdata.content;
@@ -52,9 +79,12 @@ const menuItems = computed(() => {
   }
 
   return items.map((n) => {
+    const fd = files.value.get(n);
+
     return {
       label: n,
       key: n,
+      extra: () => fd?.renderBadge(),
     }
   });
 });
@@ -85,6 +115,13 @@ function onAlert(cls: string, prefix: string, msg: AlertMessage) {
 
   text += "\n";
   fdata.content.append(cls, text);
+
+  // This is a litle hacky ...
+  if (cls == "warning") {
+    fdata.n_warnings++;
+  } else if (cls == "error") {
+    fdata.n_errors++;
+  }
 }
 
 function onNote(msg: NoteMessage) {
@@ -112,7 +149,7 @@ defineExpose({
 
   <n-split direction="horizontal" :default-size="0.2">
     <template #1>
-      <n-menu v-model:value="selected" :options="menuItems" />
+      <n-menu class="filelist" v-model:value="selected" :options="menuItems" :indent="12" />
     </template>
     <template #2>
       <pre
@@ -122,10 +159,17 @@ defineExpose({
 </template>
 
 <style scoped>
+.filelist {
+  max-height: 75vh;
+  overflow: scroll;
+}
+
 .log {
   width: 100%;
   min-height: 10rem;
+  max-height: 75vh;
   overflow: scroll;
+  margin-left: 8px;
   padding: 5px;
   color: #FFF;
   background-color: #000;
