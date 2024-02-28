@@ -394,6 +394,13 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
         );
 
         if !needs_rerun {
+            bus.post(Message::Note(AlertMessage {
+                file: Some(input_path),
+                message: "skipping build - output is cached".into(),
+                context: vec![],
+            }))
+            .await;
+
             // If we're not going to fire off a thread to process this task,
             // we just accumulate it into the results directly and we're done.
             proc.accumulate_output(opinfo, false);
