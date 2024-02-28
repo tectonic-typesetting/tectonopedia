@@ -3,8 +3,8 @@
 
 //! The main TeX-to-HTML build operation.
 //!
-//! The most interesting piece here is the `watch` operation. It's a bit tricky
-//! since we need to cooperate with Parcel.js's `serve` operation. In
+//! The most interesting piece here is how we enable the `serve` mode. It's a
+//! bit tricky since we need to cooperate with Parcel.js's `serve` operation. In
 //! particular, we want just one `yarn serve` hanging out doing its thing, but
 //! we don't want it rebuilding with a bunch of partial inputs as we do the TeX
 //! processing.
@@ -21,19 +21,17 @@
 use clap::Args;
 use std::{
     fs,
-    io::ErrorKind,
     sync::{Arc, Mutex},
     time::Instant,
 };
-use tectonic_errors::{anyhow::Context, prelude::*};
+use tectonic_errors::prelude::*;
 use tectonic_status_base::StatusBackend;
 use tokio::task::spawn_blocking;
 
 use crate::{
     assets, cache, entrypoint_file, index, inputs,
     messages::{
-        new_sync_bus_channel, AlertMessage, BuildCompleteMessage, CliStatusMessageBus, Message,
-        MessageBus,
+        new_sync_bus_channel, BuildCompleteMessage, CliStatusMessageBus, Message, MessageBus,
     },
     operation::{RuntimeEntity, RuntimeEntityIdent},
     pass1, pass2, tex_pass, yarn,
@@ -221,58 +219,34 @@ pub async fn build_through_index<T: MessageBus + 'static>(
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
 
-    // "Claim" the existing build tree to enable an incremental build,
-    // or create a new one from scratch if needed.
+    // "Claim" the existing build tree. It is an invariant that `build` should
+    // already exist when this function is called.
 
     bus.post(Message::PhaseStarted("claim-tree".into())).await;
 
-    match fs::rename("build", "staging") {
-        // Success - we will do a nice incremental build
-        //
-        // On Unix this operation will succeed if `staging` exists but is
-        // empty; the empty directory will be replaced. There is an unstable
-        // ErrorKind::DirectoryNotEmpty that could indicate when it is *not*
-        // empty, which would suggest a clash of builds.
-        Ok(_) => {}
-
-        // No existing build; we'll start from scratch.
-        Err(ref e) if e.kind() == ErrorKind::NotFound => match fs::create_dir("staging") {
-            Ok(_) => {}
-
-            Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {
-                // TODO: add a --force option and/or a `clean` subcommand
-                bus.post(Message::Error(AlertMessage {
-                    file: None,
-                    message: "failed to create directory `staging` - it already exists".into(),
-                    context: vec![
-                        "is another \"build\" or \"serve\" process running?".into(),
-                        "if not, remove the directory and try again".into(),
-                    ],
-                }))
-                .await;
-                bail!("cannot proceed with build");
-            }
-
-            Err(e) => return Err(e).context("failed to create directory `staging`".to_string()),
-        },
-
-        // Some other problem - bail.
-        Err(e) => return Err(e).context("failed to rename `build` to `staging`".to_string()),
-    }
+    atry!(
+        fs::rename("build", "staging");
+        ["failed to rename `build` to `staging`"]
+    );
 
     // Main build.
 
-    let modified_files =
-        primary_build_implementation(n_workers, collect_paths, bus.clone()).await?;
+    let result = primary_build_implementation(n_workers, collect_paths, bus.clone()).await;
 
-    // De-stage for `yarn` ops and make the fulltext index.
-
-    bus.post(Message::PhaseStarted("index-text".into())).await;
+    // Make sure to always de-stage -- barring I/O issues, the main build
+    // should only modify the tree if the build is successful.
 
     atry!(
         fs::rename("staging", "build");
         ["failed to rename `staging` to `build`"]
     );
+
+    // Did we actually succeed? If so, make the fulltext index. In
+    // "serve" mode this will trigger `yarn serve` to rebuild
+
+    let modified_files = result?;
+
+    bus.post(Message::PhaseStarted("index-text".into())).await;
 
     atry!(
         yarn::yarn_index(bus, true).await;
