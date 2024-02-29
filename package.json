@@ -9,8 +9,8 @@
     "vue-resize": "^2.0.0-alpha.1"
   },
   "devDependencies": {
-    "@parcel/transformer-sass": "^2.8",
-    "@parcel/transformer-vue": "^2.8",
+    "@parcel/transformer-sass": "^2.12",
+    "@parcel/transformer-vue": "^2.12",
     "@types/elasticlunrjs": "1.0.0",
     "@types/node": "^18.11.18",
     "elasticlunrjs": "^1.0.1",
@@ -18,8 +18,8 @@
     "gulp-format-html": "^1.2.7",
     "gulp-html": "^5.0.0",
     "htmlparser2": "^8",
-    "parcel": "^2.8",
-    "parcel-resolver-ignore": "^2.1.3",
+    "parcel": "^2.12",
+    "parcel-resolver-ignore": "^2.2.0",
     "typescript": "^4.7"
   },
   "license": "MIT",
