@@ -1,4 +1,4 @@
-// Copyright 2022-2023 the Tectonic Project
+// Copyright 2022-2024 the Tectonic Project
 // Licensed under the MIT License
 
 //! The main TeX-to-HTML build operation.
@@ -40,7 +40,7 @@ use crate::{
 /// The return value is potentially a list of the final outputs that were
 /// modified during this build process, if the boolean argument is true. The
 /// list may be empty if nothing actually changed, or if the argument is false.
-/// This list is used in "watch" mode to efficiently update Parcel.js.
+/// This list is used in "serve" mode to efficiently update Parcel.js.
 async fn primary_build_implementation<T: MessageBus + 'static>(
     n_workers: usize,
     collect_paths: bool,
@@ -113,7 +113,7 @@ async fn primary_build_implementation<T: MessageBus + 'static>(
             // Generate the merged asset info and emit the files. Start collecting
             // information about our outputs that will feed into the Parcel.js build
             // process, specifically which ones have actually been modified. We use that
-            // for efficient updates in the "watch" mode.
+            // for efficient updates in the "serve" mode.
 
             let merged_assets_id = assets::maybe_asset_merge_operation(
                 &mut indices,
