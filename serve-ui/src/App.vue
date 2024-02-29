@@ -15,7 +15,8 @@ const appUrl = ref("");
 
 // Handling the websocket
 
-const socket = new WebSocket(`ws://${window.location.host}/ws`);
+const wsproto = document.location.protocol == "http:" ? "ws:" : "wss:";
+const socket = new WebSocket(`${wsproto}//${document.location.host}/ws`);
 
 socket.addEventListener("message", (event) => {
   try {
