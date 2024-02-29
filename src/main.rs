@@ -13,11 +13,13 @@ mod entrypoint_file;
 mod holey_vec;
 mod index;
 mod inputs;
+mod messages;
 mod metadata;
 mod multivec;
 mod operation;
 mod pass1;
 mod pass2;
+mod serve;
 mod tex_escape;
 #[macro_use]
 mod tex_pass;
@@ -54,17 +56,17 @@ struct ToplevelArgs {
 impl ToplevelArgs {
     fn exec(self, mut status: Box<dyn StatusBackend + Send>) {
         let result = match self.action {
-            Action::Build(a) => a.exec(status.as_mut()),
-            Action::FirstPassImpl(a) => a.exec(status.as_mut()),
-            Action::SecondPassImpl(a) => a.exec(status.as_mut()),
-
-            // Here we jump through hoops so that `watch` can take ownership of
-            // the status backend; it runs forever and so doesn't need to join
-            // in the standard error-handling pattern.
-            Action::Watch(a) => {
+            // Here we jump through hoops so that `build` can take ownership of
+            // the status backend; it needs this to pass it around the async
+            // framework.
+            Action::Build(a) => {
                 a.exec(status);
                 return;
             }
+
+            Action::FirstPassImpl(a) => a.exec(status.as_mut()),
+            Action::SecondPassImpl(a) => a.exec(status.as_mut()),
+            Action::Serve(a) => a.exec(status.as_mut()),
         };
 
         if let Err(e) = result {
@@ -79,5 +81,5 @@ enum Action {
     Build(build::BuildArgs),
     FirstPassImpl(pass1::FirstPassImplArgs),
     SecondPassImpl(pass2::SecondPassImplArgs),
-    Watch(build::WatchArgs),
+    Serve(serve::ServeArgs),
 }

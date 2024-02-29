@@ -18,11 +18,11 @@ use tectonic_status_base::{tt_error, tt_warning, StatusBackend};
 use crate::{
     cache::{Cache, OpCacheData},
     holey_vec::HoleyVec,
+    messages::SyncMessageBusSender,
     metadata::Metadatum,
     multivec::MultiVec,
     operation::{DigestComputer, OpOutputStream, PersistEntityIdent, RuntimeEntityIdent},
     tex_escape::encode_tex_to_string,
-    worker_status::WorkerStatusBackend,
     InputId,
 };
 
@@ -381,7 +381,7 @@ impl IndexCollection {
     }
 
     /// Validate all of the cross-references.
-    pub fn validate_references(&self) -> Result<()> {
+    pub fn validate_references(&self, bus_tx: &mut SyncMessageBusSender) -> Result<()> {
         // Multiple inputs might reference the same entry, of course. We need to
         // keep track of references for each input, though, to know which
         // resolutions to provide in pass 2, and checking these resolutions
@@ -390,8 +390,6 @@ impl IndexCollection {
         let mut n_failures = 0;
 
         for (input_id, input_name) in self.indices[INPUTS_INDEX_INDEX].iter() {
-            let mut status = WorkerStatusBackend::new(input_name);
-
             // We always define the refs for every input, so this lookup can
             // never fail.
             let refs = self.refs.lookup(input_id.to_usize()).unwrap();
@@ -404,7 +402,11 @@ impl IndexCollection {
                 {
                     let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
                     let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
-                    tt_error!(status, "reference to location of index entry `{}:{}` that does not have one defined", i, e);
+                    bus_tx.file_error(
+                        input_name,
+                        format!("reference to location of index entry `{}:{}` that does not have one defined", i, e),
+                        None
+                    );
                     n_failures += 1;
                 }
 
@@ -413,11 +415,10 @@ impl IndexCollection {
                 {
                     let i = self.indices[INDEX_OF_INDICES_INDEX].resolve(entry.index);
                     let e = self.indices[entry.index.to_usize()].resolve(entry.entry);
-                    tt_error!(
-                        status,
-                        "reference to text of index entry `{}:{}` that does not have it defined",
-                        i,
-                        e
+                    bus_tx.file_error(
+                        input_name,
+                        format!("reference to text of index entry `{}:{}` that does not have it defined", i, e),
+                        None
                     );
                     n_failures += 1;
                 }
@@ -725,7 +726,7 @@ pub fn construct_indices(
     indices: &mut IndexCollection,
     metadata_ids: &[RuntimeEntityIdent],
     cache: &mut Cache,
-    status: &mut dyn StatusBackend,
+    status: &mut SyncMessageBusSender,
 ) -> Result<()> {
     // Set up the information about the operation. The operation identifier
     // must include *all* inputs since if, say, we add a new one, we'll need
@@ -783,7 +784,7 @@ pub fn construct_indices(
     }
 
     atry!(
-        indices.validate_references();
+        indices.validate_references(status);
         ["failed to validate cross-references"]
     );
 
@@ -829,7 +830,7 @@ fn load_metadata(
     input: RuntimeEntityIdent,
     indices: &mut IndexCollection,
     cache: &mut Cache,
-    status: &mut dyn StatusBackend,
+    status: &mut SyncMessageBusSender,
 ) -> Result<(InputId, impl IntoIterator<Item = IndexRef>)> {
     let outputs_id = indices.get_index("outputs").unwrap();
     let mut cur_output = None;

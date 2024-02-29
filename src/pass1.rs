@@ -5,10 +5,10 @@
 
 use clap::Args;
 use digest::Digest;
+use futures::Future;
 use std::{
     io::{BufRead, BufReader, Cursor, Write},
     path::PathBuf,
-    process::{ChildStdin, Command},
 };
 use string_interner::Symbol;
 use tectonic::{
@@ -19,13 +19,15 @@ use tectonic::{
 };
 use tectonic_bridge_core::{SecuritySettings, SecurityStance};
 use tectonic_errors::{anyhow::Context, prelude::*};
-use tectonic_status_base::{tt_warning, StatusBackend};
+use tectonic_status_base::StatusBackend;
+use tokio::process::{ChildStdin, Command};
 
 use crate::{
     cache::{Cache, OpCacheData},
     gtry,
     holey_vec::HoleyVec,
     index::IndexCollection,
+    messages::{AlertMessage, Message},
     ogtry,
     operation::{DigestComputer, DigestData, OpOutputStream, RuntimeEntityIdent},
     ostry, stry,
@@ -196,25 +198,49 @@ impl WorkerDriver for Pass1Driver {
         cmd.arg("first-pass-impl").arg(&self.input_path);
     }
 
-    fn send_stdin(&self, _stdin: &mut ChildStdin) -> Result<()> {
-        Ok(())
+    fn send_stdin(&self, _stdin: ChildStdin) -> impl Future<Output = Result<()>> {
+        futures::future::ok(())
     }
 
     // TODO: record additional inputs if/when they are detected
 
-    fn process_output_record(&mut self, record: &str, status: &mut dyn StatusBackend) {
+    fn process_output_record(&mut self, record: &str) -> Option<Message> {
         if let Some(rest) = record.strip_prefix("assets ") {
             if let Err(e) = writeln!(&mut self.assets, "{}", rest) {
-                tt_warning!(status, "error writing asset data to `{}`", self.assets.display_path(); e.into());
+                let alert = AlertMessage::new(
+                    Some(self.input_path.display()),
+                    format!(
+                        "error writing asset data to `{}`",
+                        self.assets.display_path()
+                    ),
+                    Some(e.into()),
+                );
                 self.n_errors += 1;
+                Some(Message::Warning(alert))
+            } else {
+                None
             }
         } else if let Some(rest) = record.strip_prefix("meta ") {
             if let Err(e) = writeln!(&mut self.metadata, "{}", rest) {
-                tt_warning!(status, "error writing metadata to `{}`", self.metadata.display_path(); e.into());
+                let alert = AlertMessage::new(
+                    Some(self.input_path.display()),
+                    format!(
+                        "error writing metadata to `{}`",
+                        self.metadata.display_path()
+                    ),
+                    Some(e.into()),
+                );
                 self.n_errors += 1;
+                Some(Message::Warning(alert))
+            } else {
+                None
             }
         } else {
-            tt_warning!(status, "unrecognized pass1 stdout record: {}", record);
+            Some(Message::Warning(AlertMessage::new(
+                Some(self.input_path.display()),
+                format!("unrecognized pass1 stdout record: {}", record),
+                None,
+            )))
         }
     }
 
