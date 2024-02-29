@@ -2,15 +2,20 @@
   "name": "Tectonopedia",
   "dockerFile": "Dockerfile",
   "forwardPorts": [
-    1234
+    1234,
+    5678
   ],
   "portsAttributes": {
     "1234": {
       "label": "Application",
       "onAutoForward": "openBrowserOnce"
+    },
+    "5678": {
+      "label": "Build UI",
+      "onAutoForward": "openBrowserOnce"
     }
   },
   "overrideCommand": false,
-  "postCreateCommand": "yarn install && cargo build --release --features=external-harfbuzz && cargo run --release --features=external-harfbuzz -- build -j 1",
-  "postStartCommand": "nohup bash -c 'cargo run --release --features=external-harfbuzz -- watch &'"
+  "postCreateCommand": "yarn install && (cd serve-ui && yarn install && yarn build) && cargo build --release --features=external-harfbuzz",
+  "postStartCommand": "nohup bash -c 'cargo run --release --features=external-harfbuzz -- serve &'"
 }

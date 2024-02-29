@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/vscode/devcontainers/typescript-node:18
+FROM mcr.microsoft.com/vscode/devcontainers/typescript-node:20
 
 RUN apt-get update \
   && apt-get install -y \
