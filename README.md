@@ -7,11 +7,11 @@ typesetting language.
 
 ## Quick Start
 
-To set up and launch the webserver locally in “watch” mode:
+To set up and launch the app and concurrent build server:
 
 ```sh
 yarn install
-cargo run --release -- watch
+cargo run --release -- serve --open
 ```
 
 The key directories for editing the encyclopedia are:
@@ -47,7 +47,7 @@ The Tectonopedia is created in three main stages:
 
 [Parcel.js]: https://parceljs.org/
 
-The command `tectonopedia watch`, runnable locally as `cargo run --release -- watch`,
+The command `tectonopedia serve`, runnable locally as `cargo run --release -- serve`,
 will both watch the TeX inputs and manage a Parcel.js development server,
 automatically rerunning all processing steps except for any recompilations
 of the `tectonopedia` program itself.
@@ -58,6 +58,7 @@ Some key support directories in this end-to-end process are:
 - `cache`: cached intermediate files for the TeX compilation step
 - `dist`: compiled HTML+ outputs from the Parcel bundling step
 - `node_modules`: NPM support modules for the Yarn/Parcel build steps
+- `serve-ui`: the web UI for the build server
 - `staging`: temporary version of `build`
 - `target`: compiled executable outputs from the Rust compilation step
 
