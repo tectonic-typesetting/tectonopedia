@@ -12,7 +12,9 @@
 
 use clap::Args;
 use futures::{FutureExt, StreamExt};
-use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
+use notify_debouncer_mini::{
+    new_debouncer, notify, DebounceEventHandler, DebounceEventResult, DebouncedEventKind,
+};
 use std::{
     convert::Infallible,
     io::Write,
@@ -597,13 +599,33 @@ struct Watcher {
 }
 
 impl DebounceEventHandler for Watcher {
-    fn handle_event(&mut self, event: DebounceEventResult) {
-        if let Err(_e) = event {
-            eprintln!("fs watch error!");
-        } else {
-            futures::executor::block_on(async {
-                self.command_tx.send(ServeCommand::Build).await.unwrap()
-            });
+    fn handle_event(&mut self, result: DebounceEventResult) {
+        match result {
+            Ok(events) => {
+                for event in &events {
+                    // It appears that in typical cases, we'll get zero or more
+                    // AnyContinuous events followed by an Any event once the
+                    // updates finally stop. So, just ignore the former.
+                    match event.kind {
+                        DebouncedEventKind::Any => {
+                            futures::executor::block_on(async {
+                                eprintln!("!! BUILD: watch trigger: {:?}", event);
+                                self.command_tx.send(ServeCommand::Build).await.unwrap()
+                            });
+                            return;
+                        }
+
+                        _ => {}
+                    }
+                }
+            }
+
+            Err(errors) => {
+                eprintln!("warning: filesystem change watch error(s):");
+                for error in &errors {
+                    eprintln!("  {error}");
+                }
+            }
         }
     }
 }
