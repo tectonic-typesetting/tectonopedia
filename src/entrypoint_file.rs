@@ -36,7 +36,7 @@ pub fn maybe_make_entrypoint_operation(
     let opid = dc.finalize();
 
     // NOTE: under current design, this is "other" not "output"; maybe that will change?
-    let output = RuntimeEntityIdent::new_other_file("staging/_all.html", indices);
+    let output = RuntimeEntityIdent::new_other_file("build/_all.html", indices);
 
     let needs_rerun = atry!(
         cache.operation_needs_rerun(&opid, indices, status);

@@ -31,7 +31,7 @@
     "build": "parcel build build/_all.html",
     "check": "tsc --noEmit",
     "index": "node web/search-index.js",
-    "serve": "parcel serve build/_all.html",
+    "serve": "parcel serve serve/_all.html",
     "prettify": "gulp"
   }
 }

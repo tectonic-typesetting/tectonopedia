@@ -196,7 +196,7 @@ fn emit_assets(assets: AssetSpecification, status: &mut dyn StatusBackend) -> Re
     };
 
     let mut out_dir = root.clone();
-    out_dir.push("staging");
+    out_dir.push("build");
     std::fs::create_dir_all(&out_dir)?;
 
     let input = "\\newif\\ifpassone \
