@@ -460,10 +460,15 @@ fn update_serve_dir(mut changed: Vec<String>) -> Result<()> {
         changed_set.insert(relpath);
     }
 
-    // Do the update
+    // Identify the files that need updating and duplicate them.
 
     let prefix = format!("build{}", std::path::MAIN_SEPARATOR);
     let out_base = PathBuf::from("serve");
+    let mut updates = Vec::new();
+
+    fn stage_path(i: usize) -> String {
+        format!(".stage{i}.tmp")
+    }
 
     for entry in WalkDir::new("build").into_iter() {
         let entry = atry!(
@@ -510,11 +515,28 @@ fn update_serve_dir(mut changed: Vec<String>) -> Result<()> {
                 std::fs::create_dir_all(out_path.parent().unwrap());
                 ["failed to create directories leading to `{}`", out_path.parent().unwrap().display()]
             );
+
+            let sp = stage_path(updates.len());
+
             atry!(
-                std::fs::copy(entry.path(), &out_path);
-                ["failed to copy `{}` to `{}`", entry.path().display(), out_path.display()]
+                std::fs::copy(entry.path(), &sp);
+                ["failed to copy `{}` to `{}`", entry.path().display(), sp]
             );
+
+            updates.push(out_path);
         }
+    }
+
+    // Rename to finish the job as quickly as possible, aiming
+    // to avoid extra rebuilds and potential I/O issues.
+
+    for (i, out_path) in updates.drain(..).into_iter().enumerate() {
+        let sp = stage_path(i);
+
+        atry!(
+            std::fs::rename(&sp, &out_path);
+            ["failed to rename `{}` to `{}`", sp, out_path.display()]
+        );
     }
 
     Ok(())
