@@ -16,7 +16,7 @@ library.add(faLifeRing);
 library.add(faMagnifyingGlass);
 
 // We want our HTML outputs to contain their actual content so that our content
-// can be served with a simple static webserve and so that search engines can
+// can be served with a simple static webserver and so that search engines can
 // crawl it. But we also want to use Vue to get all of the web-app construction
 // benefits that it provides, and Vue wants to control the entire DOM.
 //
@@ -27,14 +27,15 @@ library.add(faMagnifyingGlass);
 // gross and terrible, and is certainly inefficient, but I really don't want to
 // rely on JS-based server-side rendering.
 
-const title = document.getElementById("title").innerText;
-const bookName = document.getElementById("bookname").innerText;
-const content = document.getElementById("content").innerHTML;
+export function mountIt(document: Document) {
+    const title = document.getElementById("title").innerText;
+    const bookName = document.getElementById("bookname").innerText;
+    const content = document.getElementById("content").innerHTML;
+    const metadata_el = document.getElementById("metadata");
+    const relTop = metadata_el.dataset.reltop;
 
-const metadata_el = document.getElementById("metadata");
-const relTop = metadata_el.dataset.reltop;
-
-const app = createApp(App, { content, title, bookName, relTop });
-app.component("ResizeObserver", ResizeObserver);
-app.component("FontAwesomeIcon", FontAwesomeIcon);
-app.mount("#app");
+    const app = createApp(App, { content, title, bookName, relTop });
+    app.component("ResizeObserver", ResizeObserver);
+    app.component("FontAwesomeIcon", FontAwesomeIcon);
+    app.mount("#app");
+}

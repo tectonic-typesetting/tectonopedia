@@ -2,25 +2,9 @@
 // Licensed under the MIT License
 
 //! The main TeX-to-HTML build operation.
-//!
-//! The most interesting piece here is how we enable the `serve` mode. It's a
-//! bit tricky since we need to cooperate with Parcel.js's `serve` operation. In
-//! particular, we want just one `yarn serve` hanging out doing its thing, but
-//! we don't want it rebuilding with a bunch of partial inputs as we do the TeX
-//! processing.
-//!
-//! Based on my Linux testing, it looks like we can move the `build` directory
-//! out from under `yarn serve` and then back, and Parcel.js won't trigger a
-//! rebuild even if any files in that tree have changed. But if we then make any
-//! updates in that tree, Parcel will detect a change and rebuild everything. So
-//! our strategy is to move `build` to a temporary name (`staging`) for the TeX
-//! phase, move it back to `build` when that's all done, and then do the `yarn
-//! index` step to trigger the Parcel rebuild (as well as because we need to do
-//! it and it can only run when all of the TeX stuff is done).
 
 use clap::Args;
 use std::{
-    fs,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -164,17 +148,11 @@ async fn primary_build_implementation<T: MessageBus + 'static>(
             // steps, it's convenient for the entrypoint stage to figure out whether the
             // output actually changed or not.
 
-            let mut modified_output_files = Vec::new();
-
-            let id = entrypoint_file::maybe_make_entrypoint_operation(
+            let mut modified_output_files = entrypoint_file::maybe_make_entrypoint_operation(
                 &mut cache,
                 &mut indices,
                 &mut bus_tx,
             )?;
-
-            if let Some(id) = id {
-                modified_output_files.push(id);
-            }
 
             // Figure out which of the other outputs have been modified.
 
@@ -219,31 +197,7 @@ pub async fn build_through_index<T: MessageBus + 'static>(
 ) -> Result<(Instant, Vec<String>)> {
     let t0 = Instant::now();
 
-    // "Claim" the existing build tree. It is an invariant that `build` should
-    // already exist when this function is called.
-
-    bus.post(Message::PhaseStarted("claim-tree".into())).await;
-
-    atry!(
-        fs::rename("build", "staging");
-        ["failed to rename `build` to `staging`"]
-    );
-
-    // Main build.
-
     let result = primary_build_implementation(n_workers, collect_paths, bus.clone()).await;
-
-    // Make sure to always de-stage -- barring I/O issues, the main build
-    // should only modify the tree if the build is successful.
-
-    atry!(
-        fs::rename("staging", "build");
-        ["failed to rename `staging` to `build`"]
-    );
-
-    // Did we actually succeed? If so, make the fulltext index. In
-    // "serve" mode this will trigger `yarn serve` to rebuild
-
     let modified_files = result?;
 
     bus.post(Message::PhaseStarted("index-text".into())).await;

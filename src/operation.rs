@@ -67,7 +67,7 @@ pub enum PersistEntityIdent {
     TexSourceFile(String),
 
     /// An output file. The string value is the path to the file in question,
-    /// relative to the `staging` or `build` tree.
+    /// relative to the `build` tree.
     ///
     /// These inputs are handled specially so that they can map 1:1 to the "outputs"
     /// index maintained by an [`IndexCollection`].
@@ -98,7 +98,7 @@ impl PersistEntityIdent {
 
             PersistEntityIdent::OutputFile(relpath) => {
                 let mut p = root;
-                p.push("staging");
+                p.push("build");
                 p.push(relpath);
                 p
             }
@@ -160,7 +160,7 @@ pub enum RuntimeEntityIdent {
     TexSourceFile(InputId),
 
     /// An output file. The id resolves to the path to the file in question,
-    /// relative to the `staging` or `build` tree.
+    /// relative to the `build` tree.
     OutputFile(PathId),
 
     /// A file that does not belong to one of the other categories. The id

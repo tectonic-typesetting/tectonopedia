@@ -59,7 +59,7 @@ Some key support directories in this end-to-end process are:
 - `dist`: compiled HTML+ outputs from the Parcel bundling step
 - `node_modules`: NPM support modules for the Yarn/Parcel build steps
 - `serve-ui`: the web UI for the build server
-- `staging`: temporary version of `build`
+- `serve`: a clone of `build` watched by the `yarn serve` process
 - `target`: compiled executable outputs from the Rust compilation step
 
 To create a production version of the encylopedia, run: `cargo run --release -- build`.

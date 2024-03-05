@@ -612,7 +612,7 @@ impl IndexCollection {
 
             RuntimeEntityIdent::OutputFile(s) => {
                 let mut p = self.root.clone();
-                p.push("staging");
+                p.push("build");
                 p.push(self.indices[OUTPUTS_INDEX_INDEX].resolve(s));
                 p
             }
@@ -644,7 +644,7 @@ impl IndexCollection {
     /// Get a relative path associated with an output file
     ///
     /// This will yield a value for either an output file or an "other" file
-    /// with a prefix of `staging`, since the "output file" index is reserved
+    /// with a prefix of `build`, since the "output file" index is reserved
     /// specifically for TeX-generated HTML outputs.
     pub(crate) fn relpath_for_output_file(&self, rei: RuntimeEntityIdent) -> Option<&str> {
         match rei {
@@ -653,7 +653,7 @@ impl IndexCollection {
             RuntimeEntityIdent::OtherFile(s) => {
                 let p = self.indices[OTHER_PATHS_INDEX_INDEX].resolve(s);
                 // Do we need to be agnostic to the directory separator?
-                p.strip_prefix("staging/")
+                p.strip_prefix("build/")
             }
 
             _ => None,

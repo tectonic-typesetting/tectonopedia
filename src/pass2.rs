@@ -397,7 +397,7 @@ impl SecondPassImplArgs {
         };
 
         let mut out_dir = root.clone();
-        out_dir.push("staging");
+        out_dir.push("build");
         gtry!(std::fs::create_dir_all(&out_dir)
             .with_context(|| format!("cannot create output directory `{}`", out_dir.display())));
 

@@ -12,22 +12,26 @@
 
 use clap::Args;
 use futures::{FutureExt, StreamExt};
-use notify_debouncer_mini::{new_debouncer, notify, DebounceEventHandler, DebounceEventResult};
+use notify_debouncer_mini::{
+    new_debouncer, notify, DebounceEventHandler, DebounceEventResult, DebouncedEventKind,
+};
 use std::{
+    collections::HashSet,
     convert::Infallible,
-    io::Write,
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
-use tectonic_errors::prelude::*;
+use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_note, StatusBackend};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot, Mutex},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use walkdir::WalkDir;
 use warp::{
     ws::{Message as WsMessage, WebSocket},
     Filter, Rejection, Reply,
@@ -177,7 +181,6 @@ impl ServeArgs {
 
         let warp_join = tokio::task::spawn(warp_server);
         let yarn_join = tokio::task::spawn(yarn_server.serve());
-        let yarn_start_time = Instant::now();
 
         let app_url = format!("http://localhost:{yarn_serve_port}/");
         let ui_url = format!("http://localhost:{}/", warp_addr.port());
@@ -239,38 +242,15 @@ impl ServeArgs {
                             }
 
                             ServeCommand::Build => {
-                                // If we try to build before `yarn serve` has
-                                // really started up, the `build` directory
-                                // might be moved to `staging` when yarn is
-                                // first looking for it, causing it to error out
-                                // and never start serving. You could imagine
-                                // some fancy interlocks to try to make sure
-                                // that yarn has fully initialized before we
-                                // build ... but that seems complicated. Let's
-                                // just make sure that it's had a second to
-                                // start up.
-
-                                let time_since_yarn = yarn_start_time.elapsed();
-                                const YARN_STARTUP_TIME: f32 = 1.0; // seconds
-
-                                if time_since_yarn.as_secs_f32() < YARN_STARTUP_TIME {
-                                    tokio::time::sleep(Duration::from_secs(1).mul_f32(YARN_STARTUP_TIME)).await;
-                                }
-
                                 clients.post(Message::BuildStarted).await;
 
                                 match build_through_index(n_workers, true, clients.clone()).await {
                                     Ok((t0, changed)) => {
-                                        // Touch the modified files; Parcel's change-detection code doesn't
-                                        // catch atomic replacements.
-                                        for output in &changed {
-                                            let p = format!("build{}{}", std::path::MAIN_SEPARATOR, output);
-
-                                            if let Err(e) = filetime::set_file_mtime(&p, filetime::FileTime::now()) {
-                                                clients.error::<String, _>(None, format!("unable to update modification time of file `{}`", p), Some(e.into())).await;
-                                            }
+                                        if let Err(e) = update_serve_dir(changed) {
+                                            clients.error::<String, _>(None, "unable to update `serve` directory".to_string(), Some(e)).await;
                                         }
 
+                                        // FIXME! Always post build-complete
                                         clients.post(Message::BuildComplete(BuildCompleteMessage {
                                             success: true,
                                             elapsed: t0.elapsed().as_secs_f32(),
@@ -440,7 +420,7 @@ fn setup_prerequisites(status: &mut dyn StatusBackend) -> Result<()> {
 
     // stub `_all.html` for the `yarn serve` process?
 
-    let mut pb = PathBuf::from("build");
+    let mut pb = PathBuf::from("serve");
     pb.push("_all.html");
 
     if !pb.exists() {
@@ -467,6 +447,98 @@ fn setup_prerequisites(status: &mut dyn StatusBackend) -> Result<()> {
     // Ready to go!
 
     tt_note!(status, "starting servers ...");
+    Ok(())
+}
+
+fn update_serve_dir(mut changed: Vec<String>) -> Result<()> {
+    // FIXME: should make this a stringinterner probably
+
+    let mut changed_set = HashSet::new();
+
+    for relpath in changed.drain(..) {
+        // These paths do not have the `build/` prefix
+        changed_set.insert(relpath);
+    }
+
+    // Identify the files that need updating and duplicate them.
+
+    let prefix = format!("build{}", std::path::MAIN_SEPARATOR);
+    let out_base = PathBuf::from("serve");
+    let mut updates = Vec::new();
+
+    fn stage_path(i: usize) -> String {
+        format!(".stage{i}.tmp")
+    }
+
+    for entry in WalkDir::new("build").into_iter() {
+        let entry = atry!(
+            entry;
+            ["failed to traverse build output directory"]
+        );
+
+        let relpath = match entry.path().to_str().and_then(|s| s.strip_prefix(&prefix)) {
+            Some(s) => s,
+            None => continue, // warn?
+        };
+
+        let in_md = atry!(
+            entry.metadata();
+            ["failed to probe path `{}`", entry.path().display()]
+        );
+
+        if in_md.is_dir() {
+            continue;
+        }
+
+        let mut out_path = out_base.clone();
+        out_path.push(relpath);
+
+        let needs_copy = if changed_set.contains(relpath) {
+            true
+        } else {
+            match std::fs::metadata(&out_path) {
+                Ok(out_md) => {
+                    in_md.file_type() != out_md.file_type() || in_md.len() != out_md.len()
+                }
+
+                Err(ref e) if e.kind() == ErrorKind::NotFound => true,
+
+                Err(e) => {
+                    return Err(e)
+                        .context(format!("failed to probe path `{}`", out_path.display()));
+                }
+            }
+        };
+
+        if needs_copy {
+            atry!(
+                std::fs::create_dir_all(out_path.parent().unwrap());
+                ["failed to create directories leading to `{}`", out_path.parent().unwrap().display()]
+            );
+
+            let sp = stage_path(updates.len());
+
+            atry!(
+                std::fs::copy(entry.path(), &sp);
+                ["failed to copy `{}` to `{}`", entry.path().display(), sp]
+            );
+
+            updates.push(out_path);
+        }
+    }
+
+    // Rename to finish the job as quickly as possible, aiming
+    // to avoid extra rebuilds and potential I/O issues.
+
+    for (i, out_path) in updates.drain(..).enumerate() {
+        let sp = stage_path(i);
+
+        atry!(
+            std::fs::rename(&sp, &out_path);
+            ["failed to rename `{}` to `{}`", sp, out_path.display()]
+        );
+    }
+
     Ok(())
 }
 
@@ -597,13 +669,28 @@ struct Watcher {
 }
 
 impl DebounceEventHandler for Watcher {
-    fn handle_event(&mut self, event: DebounceEventResult) {
-        if let Err(_e) = event {
-            eprintln!("fs watch error!");
-        } else {
-            futures::executor::block_on(async {
-                self.command_tx.send(ServeCommand::Build).await.unwrap()
-            });
+    fn handle_event(&mut self, result: DebounceEventResult) {
+        match result {
+            Ok(events) => {
+                for event in &events {
+                    // It appears that in typical cases, we'll get zero or more
+                    // AnyContinuous events followed by an Any event once the
+                    // updates finally stop. So, just ignore the former.
+                    if event.kind == DebouncedEventKind::Any {
+                        futures::executor::block_on(async {
+                            self.command_tx.send(ServeCommand::Build).await.unwrap()
+                        });
+                        return;
+                    }
+                }
+            }
+
+            Err(errors) => {
+                eprintln!("warning: filesystem change watch error(s):");
+                for error in &errors {
+                    eprintln!("  {error}");
+                }
+            }
         }
     }
 }
