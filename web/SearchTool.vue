@@ -42,6 +42,7 @@ li {
 import { nextTick, ref } from "vue";
 import * as elasticlunr from "elasticlunrjs";
 
+import { buildSpecificSettings } from "./base";
 import SearchResult from "./SearchResult.vue";
 
 defineProps({
@@ -59,17 +60,11 @@ type IndexDoc = {
   content: string,
 };
 
-// This construct gives us the URL of the search index data, which we'll load on
-// the fly if needed. We have to give it an extension that isn't `JSON` because
-// otherwise Parcel will try to be smart and preprocess the data for us, making
-// it so that we can't use the `url:` loader to fetch the data on-demand.
-const INDEX_URL = require("url:../build/search_index.json.data");
-
 var indexPromise: Promise<elasticlunr.Index<IndexDoc>> | null = null;
 
 function ensureIndexPromise() {
   if (indexPromise === null) {
-    indexPromise = fetch(INDEX_URL).then((resp) => {
+    indexPromise = fetch(buildSpecificSettings.indexUrl).then((resp) => {
       return resp.json() as Promise<elasticlunr.SerialisedIndexData<IndexDoc>>
     }).then((json) => {
       return elasticlunr.Index.load(json);

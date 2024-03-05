@@ -148,17 +148,11 @@ async fn primary_build_implementation<T: MessageBus + 'static>(
             // steps, it's convenient for the entrypoint stage to figure out whether the
             // output actually changed or not.
 
-            let mut modified_output_files = Vec::new();
-
-            let id = entrypoint_file::maybe_make_entrypoint_operation(
+            let mut modified_output_files = entrypoint_file::maybe_make_entrypoint_operation(
                 &mut cache,
                 &mut indices,
                 &mut bus_tx,
             )?;
-
-            if let Some(id) = id {
-                modified_output_files.push(id);
-            }
 
             // Figure out which of the other outputs have been modified.
 
