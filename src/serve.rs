@@ -247,7 +247,7 @@ impl ServeArgs {
                                 match build_through_index(n_workers, true, clients.clone()).await {
                                     Ok((t0, changed)) => {
                                         if let Err(e) = update_serve_dir(changed) {
-                                            clients.error::<String, _>(None, format!("unable to update `serve`directory"), Some(e.into())).await;
+                                            clients.error::<String, _>(None, "unable to update `serve` directory".to_string(), Some(e)).await;
                                         }
 
                                         // FIXME! Always post build-complete
@@ -530,7 +530,7 @@ fn update_serve_dir(mut changed: Vec<String>) -> Result<()> {
     // Rename to finish the job as quickly as possible, aiming
     // to avoid extra rebuilds and potential I/O issues.
 
-    for (i, out_path) in updates.drain(..).into_iter().enumerate() {
+    for (i, out_path) in updates.drain(..).enumerate() {
         let sp = stage_path(i);
 
         atry!(
@@ -676,15 +676,11 @@ impl DebounceEventHandler for Watcher {
                     // It appears that in typical cases, we'll get zero or more
                     // AnyContinuous events followed by an Any event once the
                     // updates finally stop. So, just ignore the former.
-                    match event.kind {
-                        DebouncedEventKind::Any => {
-                            futures::executor::block_on(async {
-                                self.command_tx.send(ServeCommand::Build).await.unwrap()
-                            });
-                            return;
-                        }
-
-                        _ => {}
+                    if event.kind == DebouncedEventKind::Any {
+                        futures::executor::block_on(async {
+                            self.command_tx.send(ServeCommand::Build).await.unwrap()
+                        });
+                        return;
                     }
                 }
             }
