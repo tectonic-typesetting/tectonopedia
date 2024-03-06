@@ -43,14 +43,16 @@ const totalErrors = ref(0);
 const isProcessing = ref(false);
 
 const emit = defineEmits<{
-  updateBadge: [kind: "error" | "warning" | "info", value: number, processing: boolean]
+  updateBadge: [kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean]
 }>();
 
-watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc]) => {
+watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc], [_oldTotWarn, _oldTotErr, oldIsProc]) => {
   if (totErr > 0) {
     emit("updateBadge", "error", totErr, isProc);
   } else if (totWarn > 0) {
     emit("updateBadge", "warning", totWarn, isProc);
+  } else if (oldIsProc && !isProc) {
+    emit("updateBadge", "success", "✓", isProc);
   } else {
     emit("updateBadge", "info", 0, isProc);
   }

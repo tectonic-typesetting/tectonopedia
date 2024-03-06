@@ -63,8 +63,8 @@ socket.addEventListener("message", (event) => {
 // components.
 
 export interface BadgeInfo {
-  kind: "error" | "warning" | "info";
-  value: number;
+  kind: "error" | "warning" | "info" | "success";
+  value: number | string;
   processing: boolean;
 }
 
@@ -76,7 +76,7 @@ function onUpdateOutputBadge(kind: "error" | "warning" | "info", value: number) 
   outputBadge.value.kind = kind;
 }
 
-function onUpdateProgressBadge(kind: "error" | "warning" | "info", value: number, processing: boolean) {
+function onUpdateProgressBadge(kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean) {
   progressBadge.value.value = value;
   progressBadge.value.kind = kind;
   progressBadge.value.processing = processing;
@@ -117,7 +117,7 @@ function onServerInfo(msg: ServerInfoMessage) {
         <n-tab-pane name="output" display-directive="show">
           <template #tab>
             <n-badge :value="outputBadge.value" :type="outputBadge.kind">
-              <span class="tablabel">Build Outputs</span>
+              <span class="tablabel">Outputs</span>
             </n-badge>
           </template>
           <output-tab ref="outputTab" @updateBadge="onUpdateOutputBadge" />
@@ -126,7 +126,7 @@ function onServerInfo(msg: ServerInfoMessage) {
         <n-tab-pane name="progress" tab="Build Progress" display-directive="show">
           <template #tab>
             <n-badge :value="progressBadge.value" :type="progressBadge.kind" :processing="progressBadge.processing">
-              <span class="tablabel">Build Progress</span>
+              <span class="tablabel">Progress</span>
             </n-badge>
           </template>
           <build-progress-tab ref="buildProgressTab" @updateBadge="onUpdateProgressBadge" />
