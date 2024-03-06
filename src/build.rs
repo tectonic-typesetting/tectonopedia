@@ -262,7 +262,10 @@ impl BuildArgs {
             );
         }
 
+        // Unlike the build-started message, which wouldn't cause our status
+        // reporter to print anything, this message will.
         bus.post(Message::BuildComplete(BuildCompleteMessage {
+            file: None,
             success: true,
             elapsed: t0.elapsed().as_secs_f32(),
         }))

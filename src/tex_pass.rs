@@ -9,7 +9,7 @@
 //! - Subprocess stdout is parsed for information transfer
 
 use futures::Future;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Instant};
 use tectonic_errors::prelude::*;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -21,7 +21,9 @@ use tokio_task_pool::Pool;
 use crate::{
     cache::{Cache, OpCacheData},
     index::IndexCollection,
-    messages::{bus_to_status, AlertMessage, Message, MessageBus},
+    messages::{
+        bus_to_status, AlertMessage, BuildCompleteMessage, BuildStartedMessage, Message, MessageBus,
+    },
     operation::{DigestData, RuntimeEntityIdent},
 };
 
@@ -153,7 +155,33 @@ pub trait WorkerDriver: Send {
     fn finish(self) -> Result<(OpCacheData, Self::OpInfo), WorkerError<Error>>;
 }
 
+/// A wrapper for the real work function that makes sure to post
+/// messages about when the build starts and stops.
 async fn process_one_input<W: WorkerDriver, B: MessageBus>(
+    driver: W,
+    input_path: String,
+    self_path: PathBuf,
+    mut bus: B,
+) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
+    let t0 = Instant::now();
+    bus.post(Message::BuildStarted(BuildStartedMessage {
+        file: Some(input_path.clone()),
+    }))
+    .await;
+
+    let result = process_one_input_inner(driver, input_path.clone(), self_path, bus.clone()).await;
+
+    bus.post(Message::BuildComplete(BuildCompleteMessage {
+        file: Some(input_path),
+        success: result.is_ok(),
+        elapsed: t0.elapsed().as_secs_f32(),
+    }))
+    .await;
+
+    result
+}
+
+async fn process_one_input_inner<W: WorkerDriver, B: MessageBus>(
     mut driver: W,
     input_path: String,
     self_path: PathBuf,
@@ -311,6 +339,9 @@ pub trait TexProcessor {
     /// to the main thread.
     type Worker: WorkerDriver + 'static;
 
+    /// Get a user-facing description for this processing stage.
+    fn description(&self) -> &'static str;
+
     /// Create an operation info object.
     ///
     /// This function is called in the main thread. The information will be used
@@ -394,10 +425,22 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
         );
 
         if !needs_rerun {
+            bus.post(Message::BuildStarted(BuildStartedMessage {
+                file: Some(input_path.clone()),
+            }))
+            .await;
+
             bus.post(Message::Note(AlertMessage {
-                file: Some(input_path),
-                message: "skipping build - output is cached".into(),
+                file: Some(input_path.clone()),
+                message: format!("{}: skipping build - output is cached", proc.description()),
                 context: vec![],
+            }))
+            .await;
+
+            bus.post(Message::BuildComplete(BuildCompleteMessage {
+                file: Some(input_path),
+                success: true,
+                elapsed: 0.,
             }))
             .await;
 

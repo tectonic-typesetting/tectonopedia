@@ -61,7 +61,11 @@ watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc], [_
 
 // Events
 
-function onBuildStarted(_msg: BuildStartedMessage) {
+function onBuildStarted(msg: BuildStartedMessage) {
+  if (msg.build_started.file !== null) {
+    return; // an update about an individual source file -- not of interest to us
+  }
+
   spans.value = [];
   totalWarnings.value = 0;
   totalErrors.value = 0;
@@ -122,6 +126,10 @@ function onError(msg: ErrorMessage) {
 }
 
 function onBuildComplete(msg: BuildCompleteMessage) {
+  if (msg.build_complete.file !== null) {
+    return; // an update about an individual source file -- not of interest to us
+  }
+
   const e = msg.build_complete.elapsed.toFixed(1);
 
   if (msg.build_complete.success) {

@@ -46,7 +46,7 @@ pub enum Message {
     /// A build process has started. In "serve" mode this will happen
     /// unpredictably, when filesystem changes are observed, but the next build
     /// will only start after the previous one ends.
-    BuildStarted,
+    BuildStarted(BuildStartedMessage),
 
     /// A build process has completed. Maybe successfully, maybe not.
     BuildComplete(BuildCompleteMessage),
@@ -92,8 +92,29 @@ pub enum Message {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct BuildStartedMessage {
+    /// The source file that this message is associated with, if any.
+    ///
+    /// When the file is unspecified, this message refers to the
+    /// overall build. Otherwise, it refers to a single source file
+    /// that is part of the whole build.
+    pub file: Option<String>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct BuildCompleteMessage {
+    /// The source file that this message is associated with, if any.
+    ///
+    /// When the file is unspecified, this message refers to the
+    /// overall build. Otherwise, it refers to a single source file
+    /// that is part of the whole build.
+    pub file: Option<String>,
+
+    /// Whether the build was successful or not.
     pub success: bool,
+
+    /// How long the build took, in seconds.
     pub elapsed: f32,
 }
 

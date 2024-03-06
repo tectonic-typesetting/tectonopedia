@@ -13,13 +13,18 @@ export type AlertMessage = S.Schema.To<typeof AlertMessage>;
 
 const BuildCompleteMessage = S.struct({
     build_complete: S.struct({
+        file: S.union(S.string, S.null),
         success: S.boolean,
         elapsed: S.number,
     }),
 });
 export type BuildCompleteMessage = S.Schema.To<typeof BuildCompleteMessage>;
 
-const BuildStartedMessage = S.literal("build_started");
+const BuildStartedMessage = S.struct({
+    build_started: S.struct({
+        file: S.union(S.string, S.null),
+    }),
+});
 export type BuildStartedMessage = S.Schema.To<typeof BuildStartedMessage>;
 
 const CommandLaunchedMessage = S.struct({

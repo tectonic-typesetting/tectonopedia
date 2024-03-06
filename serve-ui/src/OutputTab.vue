@@ -54,13 +54,13 @@ class FileData {
     } else if (this.proc_state == ProcState.Complete) {
       badge_value = "";
       badge_type = "success";
-      badge_dot = true;
+      badge_show = false;
     } else if (this.proc_state == ProcState.Processing) {
       badge_value = "";
       badge_type = "info";
       badge_dot = true;
       badge_processing = true;
-    } else {
+    } else { // "Initial" state
       badge_value = "";
       badge_type = "info";
       badge_show = false;
@@ -158,15 +158,51 @@ watch([totalWarnings, totalErrors, totalProcState], ([totWarn, totErr, procState
 
 // Events
 
-function onBuildStarted(_msg: BuildStartedMessage) {
-  files.value.clear();
-  totalWarnings.value = 0;
-  totalErrors.value = 0;
-  totalProcState.value = ProcState.Processing;
+function onBuildStarted(msg: BuildStartedMessage) {
+  if (msg.build_started.file === null) {
+    // this message is about the global build
+    files.value.clear();
+    totalWarnings.value = 0;
+    totalErrors.value = 0;
+    totalProcState.value = ProcState.Processing;
+  } else {
+    // one about a specific file
+    let fdata = files.value.get(msg.build_started.file);
+
+    if (fdata === undefined) {
+      fdata = new FileData();
+      files.value.set(msg.build_started.file, fdata);
+    }
+
+    let nl = fdata.content.spans.length > 0 ? "\n" : "";
+    fdata.content.append("success", `${nl}Starting a build pass at ${new Date().toISOString()}\n`);
+    fdata.proc_state = ProcState.Processing;
+  }
 }
 
-function onBuildComplete(_msg: BuildCompleteMessage) {
-  totalProcState.value = ProcState.Complete;
+function onBuildComplete(msg: BuildCompleteMessage) {
+  if (msg.build_complete.file === null) {
+    // this message is about the global build
+    totalProcState.value = ProcState.Complete;
+  } else {
+    // one about a specific file
+    let fdata = files.value.get(msg.build_complete.file);
+
+    if (fdata === undefined) {
+      fdata = new FileData();
+      files.value.set(msg.build_complete.file, fdata);
+    }
+
+    const e = msg.build_complete.elapsed.toFixed(1);
+
+    if (msg.build_complete.success) {
+      fdata.content.append("success", `\nBuild successful in ${e} seconds\n`);
+    } else {
+      fdata.content.append("error", `\nBuild failed after ${e} seconds\n`);
+    }
+
+    fdata.proc_state = ProcState.Complete;
+  }
 }
 
 function onAlert(cls: string, prefix: string, msg: AlertMessage) {

@@ -43,7 +43,7 @@ socket.addEventListener("message", (event) => {
     } else if (msg.hasOwnProperty("build_complete")) {
       outputTab.value?.onBuildComplete(msg);
       buildProgressTab.value?.onBuildComplete(msg);
-    } else if (msg === "build_started") {
+    } else if (msg.hasOwnProperty("build_started")) {
       outputTab.value?.onBuildStarted(msg);
       buildProgressTab.value?.onBuildStarted(msg);
     } else if (msg === "server_quitting") {

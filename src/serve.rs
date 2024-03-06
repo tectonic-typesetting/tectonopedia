@@ -39,7 +39,7 @@ use warp::{
 
 use crate::{
     build::build_through_index,
-    messages::{BuildCompleteMessage, Message, MessageBus, ServerInfoMessage},
+    messages::{BuildCompleteMessage, BuildStartedMessage, Message, MessageBus, ServerInfoMessage},
     yarn::YarnServer,
 };
 
@@ -242,7 +242,7 @@ impl ServeArgs {
                             }
 
                             ServeCommand::Build => {
-                                clients.post(Message::BuildStarted).await;
+                                clients.post(Message::BuildStarted(BuildStartedMessage { file: None })).await;
                                 let t0 = Instant::now();
                                 let mut success = false;
 
@@ -259,6 +259,7 @@ impl ServeArgs {
                                 }
 
                                 clients.post(Message::BuildComplete(BuildCompleteMessage {
+                                    file: None,
                                     success,
                                     elapsed: t0.elapsed().as_secs_f32(),
                                 }))
