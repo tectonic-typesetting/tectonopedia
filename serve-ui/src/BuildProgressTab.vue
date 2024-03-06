@@ -48,7 +48,7 @@ const emit = defineEmits<{
 
 watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc], [_oldTotWarn, _oldTotErr, oldIsProc]) => {
   if (totErr > 0) {
-    emit("updateBadge", "error", totErr, isProc);
+    emit("updateBadge", "error", "✗", isProc);
   } else if (totWarn > 0) {
     emit("updateBadge", "warning", totWarn, isProc);
   } else if (oldIsProc && !isProc) {

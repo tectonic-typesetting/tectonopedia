@@ -41,6 +41,7 @@ socket.addEventListener("message", (event) => {
     } else if (msg.hasOwnProperty("yarn_serve_output")) {
       yarnServeTab.value?.onYarnServeOutput(msg);
     } else if (msg.hasOwnProperty("build_complete")) {
+      outputTab.value?.onBuildComplete(msg);
       buildProgressTab.value?.onBuildComplete(msg);
     } else if (msg === "build_started") {
       outputTab.value?.onBuildStarted(msg);
@@ -71,9 +72,10 @@ export interface BadgeInfo {
 const outputBadge = ref<BadgeInfo>({ kind: "info", value: 0, processing: false });
 const progressBadge = ref<BadgeInfo>({ kind: "info", value: 0, processing: false });
 
-function onUpdateOutputBadge(kind: "error" | "warning" | "info", value: number) {
+function onUpdateOutputBadge(kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean) {
   outputBadge.value.value = value;
   outputBadge.value.kind = kind;
+  outputBadge.value.processing = processing;
 }
 
 function onUpdateProgressBadge(kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean) {
@@ -116,7 +118,7 @@ function onServerInfo(msg: ServerInfoMessage) {
       <n-tabs type="card" size="large">
         <n-tab-pane name="output" display-directive="show">
           <template #tab>
-            <n-badge :value="outputBadge.value" :type="outputBadge.kind">
+            <n-badge :value="outputBadge.value" :type="outputBadge.kind" :processing="progressBadge.processing">
               <span class="tablabel">Outputs</span>
             </n-badge>
           </template>
