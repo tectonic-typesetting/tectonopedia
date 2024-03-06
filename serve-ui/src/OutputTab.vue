@@ -196,9 +196,9 @@ function onBuildComplete(msg: BuildCompleteMessage) {
     const e = msg.build_complete.elapsed.toFixed(1);
 
     if (msg.build_complete.success) {
-      fdata.content.append("success", `\nBuild successful in ${e} seconds\n`);
+      fdata.content.append("success", `\nPass successful in ${e} seconds\n`);
     } else {
-      fdata.content.append("error", `\nBuild failed after ${e} seconds\n`);
+      fdata.content.append("error", `\nPass failed after ${e} seconds\n`);
     }
 
     fdata.proc_state = ProcState.Complete;
