@@ -190,13 +190,13 @@ async fn primary_build_implementation<T: MessageBus + 'static>(
     Ok(paths)
 }
 
+/// The returned value is a list of the output files that were modified during
+/// the build. The paths are relative to the `build/` directory.
 pub async fn build_through_index<T: MessageBus + 'static>(
     n_workers: usize,
     collect_paths: bool,
     mut bus: T,
-) -> Result<(Instant, Vec<String>)> {
-    let t0 = Instant::now();
-
+) -> Result<Vec<String>> {
     let result = primary_build_implementation(n_workers, collect_paths, bus.clone()).await;
     let modified_files = result?;
 
@@ -207,7 +207,7 @@ pub async fn build_through_index<T: MessageBus + 'static>(
         ["failed to generate fulltext index"]
     );
 
-    Ok((t0, modified_files))
+    Ok(modified_files)
 }
 
 /// The standalone build operation.
@@ -250,7 +250,8 @@ impl BuildArgs {
             num_cpus::get()
         };
 
-        let (t0, _) = build_through_index(n_workers, false, bus.clone()).await?;
+        let t0 = Instant::now();
+        build_through_index(n_workers, false, bus.clone()).await?;
 
         if !self.no_dist {
             bus.post(Message::PhaseStarted("yarn-build".into())).await;
