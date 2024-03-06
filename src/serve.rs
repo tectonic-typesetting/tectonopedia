@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_status_base::{tt_note, StatusBackend};
@@ -39,7 +39,7 @@ use warp::{
 
 use crate::{
     build::build_through_index,
-    messages::{BuildCompleteMessage, Message, MessageBus, ServerInfoMessage},
+    messages::{BuildCompleteMessage, BuildStartedMessage, Message, MessageBus, ServerInfoMessage},
     yarn::YarnServer,
 };
 
@@ -242,25 +242,28 @@ impl ServeArgs {
                             }
 
                             ServeCommand::Build => {
-                                clients.post(Message::BuildStarted).await;
+                                clients.post(Message::BuildStarted(BuildStartedMessage { file: None })).await;
+                                let t0 = Instant::now();
+                                let mut success = false;
 
                                 match build_through_index(n_workers, true, clients.clone()).await {
-                                    Ok((t0, changed)) => {
+                                    Ok(changed) => {
                                         if let Err(e) = update_serve_dir(changed) {
                                             clients.error::<String, _>(None, "unable to update `serve` directory".to_string(), Some(e)).await;
+                                        } else {
+                                            success = true;
                                         }
-
-                                        // FIXME! Always post build-complete
-                                        clients.post(Message::BuildComplete(BuildCompleteMessage {
-                                            success: true,
-                                            elapsed: t0.elapsed().as_secs_f32(),
-                                        }))
-                                        .await;
                                     }
 
                                     Err(e) => clients.error::<String, _>(None, "build failure", Some(e)).await
                                 }
-                            }
+
+                                clients.post(Message::BuildComplete(BuildCompleteMessage {
+                                    file: None,
+                                    success,
+                                    elapsed: t0.elapsed().as_secs_f32(),
+                                }))
+                                .await;                            }
                         }
                     } else {
                         break;

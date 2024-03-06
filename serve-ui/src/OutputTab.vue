@@ -5,6 +5,7 @@ import { NBadge, NMenu, NSplit } from "naive-ui";
 
 import type {
   AlertMessage,
+  BuildCompleteMessage,
   BuildStartedMessage,
   ErrorMessage,
   NoteMessage,
@@ -13,39 +14,74 @@ import type {
 
 import { SpanSet } from "./spanset.js";
 
-// Managing file selection
+// Per-file state
 
-const selected = ref<string | null>(null);
+const ProcState = {
+  Initial: 0,
+  Processing: 1,
+  Complete: 2,
+} as const;
+
+type ProcState = typeof ProcState[keyof typeof ProcState];
 
 class FileData {
   content: SpanSet;
+  proc_state: ProcState;
   n_warnings: number;
   n_errors: number;
 
   constructor() {
     this.content = new SpanSet();
+    this.proc_state = ProcState.Initial;
     this.n_warnings = 0;
     this.n_errors = 0;
   }
 
-  renderBadge() {
-    let value;
-    let btype;
+  render(name: string) {
+    let badge_value;
+    let badge_type;
+    let badge_dot = false;
+    let badge_processing = false;
+    let badge_show = true;
+    let badge_color = undefined;
 
     if (this.n_errors) {
-      value = this.n_errors;
-      btype = "error";
+      badge_value = this.n_errors;
+      badge_type = "error";
     } else if (this.n_warnings) {
-      value = this.n_warnings;
-      btype = "warning";
-    } else {
-      return h("span");
+      badge_value = this.n_warnings;
+      badge_type = "warning";
+    } else if (this.proc_state == ProcState.Complete) {
+      badge_value = "";
+      badge_type = "success";
+      badge_show = false;
+    } else if (this.proc_state == ProcState.Processing) {
+      badge_value = "";
+      badge_type = "info";
+      badge_dot = true;
+      badge_processing = true;
+    } else { // "Initial" state
+      badge_value = "";
+      badge_type = "info";
+      badge_show = false;
+      badge_color = "gray";
     }
 
-    return h(NBadge, {
-      value,
-      "type": btype as any,
-    });
+    return h(
+      NBadge,
+      {
+        value: badge_value,
+        "type": badge_type as any,
+        processing: badge_processing,
+        dot: badge_dot,
+        show: badge_show,
+        color: badge_color,
+        offset: [12, 12],
+      },
+      [
+        h("span", {}, name),
+      ]
+    );
   }
 }
 
@@ -53,19 +89,6 @@ const files = ref<Map<string, FileData>>(new Map());
 
 const noFileContent = new SpanSet();
 noFileContent.append("default", "(no file selected)");
-
-const selectedSpans = computed(() => {
-  if (selected.value === null) {
-    return noFileContent;
-  }
-
-  const fdata = files.value.get(selected.value);
-  if (fdata === undefined) {
-    return noFileContent;
-  }
-
-  return fdata.content;
-});
 
 const menuItems = computed(() => {
   const items = Array.from(files.value.keys()).sort();
@@ -82,11 +105,28 @@ const menuItems = computed(() => {
     const fd = files.value.get(n);
 
     return {
-      label: n,
       key: n,
-      extra: () => fd?.renderBadge(),
+      label: () => fd?.render(n),
     }
   });
+});
+
+
+// Managing file selection
+
+const selected = ref<string | null>(null);
+
+const selectedSpans = computed(() => {
+  if (selected.value === null) {
+    return noFileContent;
+  }
+
+  const fdata = files.value.get(selected.value);
+  if (fdata === undefined) {
+    return noFileContent;
+  }
+
+  return fdata.content;
 });
 
 
@@ -95,28 +135,74 @@ const menuItems = computed(() => {
 
 const totalWarnings = ref(0);
 const totalErrors = ref(0);
+const totalProcState = ref<ProcState>(ProcState.Initial);
 
 const emit = defineEmits<{
-  updateBadge: [kind: "error" | "warning" | "info", value: number]
+  updateBadge: [kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean]
 }>();
 
-watch([totalWarnings, totalErrors], ([totWarn, totErr]) => {
+watch([totalWarnings, totalErrors, totalProcState], ([totWarn, totErr, procState]) => {
+  const isProc = (procState == ProcState.Processing);
+
   if (totErr > 0) {
-    emit("updateBadge", "error", totErr);
+    emit("updateBadge", "error", totErr, isProc);
   } else if (totWarn > 0) {
-    emit("updateBadge", "warning", totWarn);
+    emit("updateBadge", "warning", totWarn, isProc);
+  } else if (procState == ProcState.Complete) {
+    emit("updateBadge", "success", "✓", isProc);
   } else {
-    emit("updateBadge", "info", 0);
+    emit("updateBadge", "info", 0, isProc);
   }
 }, { immediate: true })
 
 
 // Events
 
-function onBuildStarted(_msg: BuildStartedMessage) {
-  files.value.clear();
-  totalWarnings.value = 0;
-  totalErrors.value = 0;
+function onBuildStarted(msg: BuildStartedMessage) {
+  if (msg.build_started.file === null) {
+    // this message is about the global build
+    files.value.clear();
+    totalWarnings.value = 0;
+    totalErrors.value = 0;
+    totalProcState.value = ProcState.Processing;
+  } else {
+    // one about a specific file
+    let fdata = files.value.get(msg.build_started.file);
+
+    if (fdata === undefined) {
+      fdata = new FileData();
+      files.value.set(msg.build_started.file, fdata);
+    }
+
+    let nl = fdata.content.spans.length > 0 ? "\n" : "";
+    fdata.content.append("success", `${nl}Starting a build pass at ${new Date().toISOString()}\n`);
+    fdata.proc_state = ProcState.Processing;
+  }
+}
+
+function onBuildComplete(msg: BuildCompleteMessage) {
+  if (msg.build_complete.file === null) {
+    // this message is about the global build
+    totalProcState.value = ProcState.Complete;
+  } else {
+    // one about a specific file
+    let fdata = files.value.get(msg.build_complete.file);
+
+    if (fdata === undefined) {
+      fdata = new FileData();
+      files.value.set(msg.build_complete.file, fdata);
+    }
+
+    const e = msg.build_complete.elapsed.toFixed(1);
+
+    if (msg.build_complete.success) {
+      fdata.content.append("success", `\nBuild successful in ${e} seconds\n`);
+    } else {
+      fdata.content.append("error", `\nBuild failed after ${e} seconds\n`);
+    }
+
+    fdata.proc_state = ProcState.Complete;
+  }
 }
 
 function onAlert(cls: string, prefix: string, msg: AlertMessage) {
@@ -163,6 +249,7 @@ function onError(msg: ErrorMessage) {
 }
 
 defineExpose({
+  onBuildComplete,
   onBuildStarted,
   onError,
   onNote,

@@ -43,14 +43,16 @@ const totalErrors = ref(0);
 const isProcessing = ref(false);
 
 const emit = defineEmits<{
-  updateBadge: [kind: "error" | "warning" | "info", value: number, processing: boolean]
+  updateBadge: [kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean]
 }>();
 
-watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc]) => {
+watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc], [_oldTotWarn, _oldTotErr, oldIsProc]) => {
   if (totErr > 0) {
-    emit("updateBadge", "error", totErr, isProc);
+    emit("updateBadge", "error", "✗", isProc);
   } else if (totWarn > 0) {
     emit("updateBadge", "warning", totWarn, isProc);
+  } else if (oldIsProc && !isProc) {
+    emit("updateBadge", "success", "✓", isProc);
   } else {
     emit("updateBadge", "info", 0, isProc);
   }
@@ -59,7 +61,11 @@ watch([totalWarnings, totalErrors, isProcessing], ([totWarn, totErr, isProc]) =>
 
 // Events
 
-function onBuildStarted(_msg: BuildStartedMessage) {
+function onBuildStarted(msg: BuildStartedMessage) {
+  if (msg.build_started.file !== null) {
+    return; // an update about an individual source file -- not of interest to us
+  }
+
   spans.value = [];
   totalWarnings.value = 0;
   totalErrors.value = 0;
@@ -120,6 +126,10 @@ function onError(msg: ErrorMessage) {
 }
 
 function onBuildComplete(msg: BuildCompleteMessage) {
+  if (msg.build_complete.file !== null) {
+    return; // an update about an individual source file -- not of interest to us
+  }
+
   const e = msg.build_complete.elapsed.toFixed(1);
 
   if (msg.build_complete.success) {

@@ -41,8 +41,9 @@ socket.addEventListener("message", (event) => {
     } else if (msg.hasOwnProperty("yarn_serve_output")) {
       yarnServeTab.value?.onYarnServeOutput(msg);
     } else if (msg.hasOwnProperty("build_complete")) {
+      outputTab.value?.onBuildComplete(msg);
       buildProgressTab.value?.onBuildComplete(msg);
-    } else if (msg === "build_started") {
+    } else if (msg.hasOwnProperty("build_started")) {
       outputTab.value?.onBuildStarted(msg);
       buildProgressTab.value?.onBuildStarted(msg);
     } else if (msg === "server_quitting") {
@@ -63,20 +64,21 @@ socket.addEventListener("message", (event) => {
 // components.
 
 export interface BadgeInfo {
-  kind: "error" | "warning" | "info";
-  value: number;
+  kind: "error" | "warning" | "info" | "success";
+  value: number | string;
   processing: boolean;
 }
 
 const outputBadge = ref<BadgeInfo>({ kind: "info", value: 0, processing: false });
 const progressBadge = ref<BadgeInfo>({ kind: "info", value: 0, processing: false });
 
-function onUpdateOutputBadge(kind: "error" | "warning" | "info", value: number) {
+function onUpdateOutputBadge(kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean) {
   outputBadge.value.value = value;
   outputBadge.value.kind = kind;
+  outputBadge.value.processing = processing;
 }
 
-function onUpdateProgressBadge(kind: "error" | "warning" | "info", value: number, processing: boolean) {
+function onUpdateProgressBadge(kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean) {
   progressBadge.value.value = value;
   progressBadge.value.kind = kind;
   progressBadge.value.processing = processing;
@@ -116,8 +118,8 @@ function onServerInfo(msg: ServerInfoMessage) {
       <n-tabs type="card" size="large">
         <n-tab-pane name="output" display-directive="show">
           <template #tab>
-            <n-badge :value="outputBadge.value" :type="outputBadge.kind">
-              <span class="tablabel">Build Outputs</span>
+            <n-badge :value="outputBadge.value" :type="outputBadge.kind" :processing="progressBadge.processing">
+              <span class="tablabel">Outputs</span>
             </n-badge>
           </template>
           <output-tab ref="outputTab" @updateBadge="onUpdateOutputBadge" />
@@ -126,7 +128,7 @@ function onServerInfo(msg: ServerInfoMessage) {
         <n-tab-pane name="progress" tab="Build Progress" display-directive="show">
           <template #tab>
             <n-badge :value="progressBadge.value" :type="progressBadge.kind" :processing="progressBadge.processing">
-              <span class="tablabel">Build Progress</span>
+              <span class="tablabel">Progress</span>
             </n-badge>
           </template>
           <build-progress-tab ref="buildProgressTab" @updateBadge="onUpdateProgressBadge" />

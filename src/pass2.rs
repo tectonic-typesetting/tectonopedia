@@ -103,6 +103,10 @@ impl Pass2Processor {
 impl TexProcessor for Pass2Processor {
     type Worker = Pass2Driver;
 
+    fn description(&self) -> &'static str {
+        "TeX pass 2"
+    }
+
     fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,

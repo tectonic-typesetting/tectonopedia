@@ -68,6 +68,10 @@ impl TexProcessor for Pass1Processor {
     /// return any results that we care about at runtime.
     type Worker = Pass1Driver;
 
+    fn description(&self) -> &'static str {
+        "TeX pass 1"
+    }
+
     fn make_op_info(
         &mut self,
         input: RuntimeEntityIdent,
