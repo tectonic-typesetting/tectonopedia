@@ -38,7 +38,7 @@ use warp::{
 };
 
 use crate::{
-    build::build_through_index,
+    build::{build_through_index, debug_build_one_input},
     messages::{BuildCompleteMessage, BuildStartedMessage, Message, MessageBus, ServerInfoMessage},
     yarn::YarnServer,
 };
@@ -57,6 +57,9 @@ pub struct ServeArgs {
 pub enum ServeCommand {
     /// Rebuild the document.
     Build,
+
+    /// Debug a specific input file.
+    DebugInput(String),
 
     /// Notify the server that a client has connectd.
     ClientConnected,
@@ -263,7 +266,14 @@ impl ServeArgs {
                                     success,
                                     elapsed: t0.elapsed().as_secs_f32(),
                                 }))
-                                .await;                            }
+                                .await;
+                            }
+
+                            ServeCommand::DebugInput(path) => {
+                                if let Err(e) = debug_build_one_input(&path, clients.clone()).await {
+                                    clients.error(Some(path), "debug build failure", Some(e)).await;
+                                }
+                            }
                         }
                     } else {
                         break;
@@ -639,24 +649,31 @@ async fn ws_client_connection(ws: WebSocket, clients: WarpClientCollection, warp
             break;
         }
 
-        match msg.to_str() {
-            Ok("trigger_build") => {
-                if let Err(e) = command_tx.send(ServeCommand::Build).await {
-                    eprintln!("error in WebSocket client handler notifying main task: {e:?}");
-                    break;
-                }
-            }
-
-            Ok("quit") => {
-                if let Err(e) = command_tx.send(ServeCommand::Quit(Ok(()))).await {
-                    eprintln!("error in WebSocket client handler notifying main task: {e:?}");
-                    break;
-                }
-            }
+        let msg = match msg.to_str() {
+            Ok(s) => s,
 
             _ => {
-                eprintln!("unrecognized WebSocket client message: {:?}", msg);
+                eprintln!("non-string WebSocket client message: {:?}", msg);
+                continue;
             }
+        };
+
+        let cmd = {
+            if let Some(p) = msg.strip_prefix("debug_input:") {
+                ServeCommand::DebugInput(p.to_owned())
+            } else if msg == "trigger_build" {
+                ServeCommand::Build
+            } else if msg == "quit" {
+                ServeCommand::Quit(Ok(()))
+            } else {
+                eprintln!("unrecognized WebSocket client message: {:?}", msg);
+                continue;
+            }
+        };
+
+        if let Err(e) = command_tx.send(cmd).await {
+            eprintln!("error in WebSocket client handler notifying main task: {e:?}");
+            break;
         }
     }
 

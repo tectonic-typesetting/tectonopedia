@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // The tab reporting build output associated with individual source files.
 import { computed, h, ref, watch } from "vue";
-import { NBadge, NMenu, NSplit } from "naive-ui";
+import { NBadge, NButton, NFlex, NMenu, NSplit } from "naive-ui";
 
 import type {
   AlertMessage,
   BuildCompleteMessage,
   BuildStartedMessage,
   ErrorMessage,
+  InputDebugOutputMessage,
   NoteMessage,
   WarningMessage,
 } from "./messages.js";
@@ -32,6 +33,13 @@ class FileData {
 
   constructor() {
     this.content = new SpanSet();
+    this.proc_state = ProcState.Initial;
+    this.n_warnings = 0;
+    this.n_errors = 0;
+  }
+
+  clear() {
+    this.content.spans = [];
     this.proc_state = ProcState.Initial;
     this.n_warnings = 0;
     this.n_errors = 0;
@@ -138,7 +146,8 @@ const totalErrors = ref(0);
 const totalProcState = ref<ProcState>(ProcState.Initial);
 
 const emit = defineEmits<{
-  updateBadge: [kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean]
+  updateBadge: [kind: "error" | "warning" | "info" | "success", value: number | string, processing: boolean],
+  debugInput: [path: string],
 }>();
 
 watch([totalWarnings, totalErrors, totalProcState], ([totWarn, totErr, procState]) => {
@@ -156,7 +165,7 @@ watch([totalWarnings, totalErrors, totalProcState], ([totWarn, totErr, procState
 }, { immediate: true })
 
 
-// Events
+// Incoming events
 
 function onBuildStarted(msg: BuildStartedMessage) {
   if (msg.build_started.file === null) {
@@ -196,9 +205,9 @@ function onBuildComplete(msg: BuildCompleteMessage) {
     const e = msg.build_complete.elapsed.toFixed(1);
 
     if (msg.build_complete.success) {
-      fdata.content.append("success", `\nBuild successful in ${e} seconds\n`);
+      fdata.content.append("success", `\nPass successful in ${e} seconds\n`);
     } else {
-      fdata.content.append("error", `\nBuild failed after ${e} seconds\n`);
+      fdata.content.append("error", `\nPass failed after ${e} seconds\n`);
     }
 
     fdata.proc_state = ProcState.Complete;
@@ -248,10 +257,36 @@ function onError(msg: ErrorMessage) {
   onAlert("error", "error", msg.error);
 }
 
+function onInputDebugOutput(msg: InputDebugOutputMessage) {
+  let fdata = files.value.get(msg.input_debug_output.file);
+
+  if (fdata === undefined) {
+    fdata = new FileData();
+    files.value.set(msg.input_debug_output.file, fdata);
+  }
+
+  fdata.content.append("default", msg.input_debug_output.lines.join("\n") + "\n");
+}
+
+// UI events
+
+function onDebug() {
+  if (selected.value) {
+    let fdata = files.value.get(selected.value);
+
+    if (fdata !== undefined) {
+      fdata.clear();
+    }
+
+    emit("debugInput", selected.value);
+  }
+}
+
 defineExpose({
   onBuildComplete,
   onBuildStarted,
   onError,
+  onInputDebugOutput,
   onNote,
   onWarning,
 });
@@ -265,6 +300,9 @@ defineExpose({
       <n-menu class="filelist" v-model:value="selected" :options="menuItems" :indent="12" />
     </template>
     <template #2>
+      <n-flex justify="end">
+        <n-button v-if="selected" @click="onDebug" strong secondary type="error">Debug this input</n-button>
+      </n-flex>
       <pre
         class="log"><code ref="code" v-for="s in selectedSpans.spans"><span :class="s.cls">{{ s.content }}</span></code></pre>
     </template>

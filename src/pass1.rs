@@ -266,6 +266,10 @@ impl WorkerDriver for Pass1Driver {
 
 #[derive(Args, Debug)]
 pub struct FirstPassImplArgs {
+    /// Whether to activate input-debug mode
+    #[arg(long)]
+    pub debug: bool,
+
     /// The path of the TeX file to compile
     #[arg()]
     pub tex_path: String,
@@ -311,6 +315,10 @@ impl FirstPassImplArgs {
             .html_emit_files(false)
             .html_assets_spec_path("assets.json")
             .pass(PassSetting::Default);
+
+        if self.debug {
+            sess.print_stdout(true);
+        }
 
         let mut sess = ogtry!(sess.create(status));
 

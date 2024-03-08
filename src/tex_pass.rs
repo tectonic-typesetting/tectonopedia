@@ -22,7 +22,8 @@ use crate::{
     cache::{Cache, OpCacheData},
     index::IndexCollection,
     messages::{
-        bus_to_status, AlertMessage, BuildCompleteMessage, BuildStartedMessage, Message, MessageBus,
+        bus_to_status, AlertMessage, BuildCompleteMessage, BuildStartedMessage,
+        InputDebugOutputMessage, Message, MessageBus,
     },
     operation::{DigestData, RuntimeEntityIdent},
 };
@@ -162,6 +163,7 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
     input_path: String,
     self_path: PathBuf,
     mut bus: B,
+    debug: bool,
 ) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
     let t0 = Instant::now();
     bus.post(Message::BuildStarted(BuildStartedMessage {
@@ -169,7 +171,8 @@ async fn process_one_input<W: WorkerDriver, B: MessageBus>(
     }))
     .await;
 
-    let result = process_one_input_inner(driver, input_path.clone(), self_path, bus.clone()).await;
+    let result =
+        process_one_input_inner(driver, input_path.clone(), self_path, bus.clone(), debug).await;
 
     bus.post(Message::BuildComplete(BuildCompleteMessage {
         file: Some(input_path),
@@ -186,15 +189,21 @@ async fn process_one_input_inner<W: WorkerDriver, B: MessageBus>(
     input_path: String,
     self_path: PathBuf,
     mut bus: B,
+    debug: bool,
 ) -> Result<(OpCacheData, W::OpInfo), WorkerError<()>> {
     // This function should fully report out any errors that it encounters,
     // since it can only propagate a stateless flag as to whether a "specific"
     // or "general" error occurred; it can't propagate out detailed information.
 
     let mut cmd = Command::new(self_path);
+
     driver.init_command(&mut cmd);
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped());
+
+    if debug {
+        cmd.arg("--debug");
+    }
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -258,6 +267,12 @@ async fn process_one_input_inner<W: WorkerDriver, B: MessageBus>(
                             }
                         }
                     }
+                } else if debug {
+                    bus.post(Message::InputDebugOutput(InputDebugOutputMessage {
+                        file: input_path.clone(),
+                        lines: vec![line],
+                    }))
+                    .await;
                 } else {
                     bus.warning(
                         Some(input_path.clone()),
@@ -493,7 +508,7 @@ pub async fn process_inputs<'a, P: TexProcessor, B: MessageBus + 'static>(
         let ip = input_path.clone();
 
         pool.spawn(async move {
-            tx.send(process_one_input(driver, ip, sp, bc).await)
+            tx.send(process_one_input(driver, ip, sp, bc, false).await)
                 .await
                 .expect("channel waits for pool result");
         })
@@ -587,5 +602,41 @@ async fn process_input_finish<P: TexProcessor, B: MessageBus>(
             Some(e),
         )
         .await;
+    }
+}
+
+/// This will only work with pass1 right now, since we haven't bothered to
+/// implement --debug for the pass2 subprocess.
+pub async fn debug_one_input<'a, P: TexProcessor, B: MessageBus + 'static>(
+    input: RuntimeEntityIdent,
+    proc: &mut P,
+    cache: &mut Cache,
+    indices: &mut IndexCollection,
+    bus: B,
+) -> Result<()> {
+    let self_path = atry!(
+        std::env::current_exe();
+        ["cannot obtain the path to the current executable"]
+    );
+
+    let input_path = indices.relpath_for_tex_source(input).unwrap().to_owned();
+
+    let opinfo = atry!(
+        proc.make_op_info(input, cache, indices);
+        ["failed to prepare operation for input `{}`", indices.relpath_for_tex_source(input).unwrap()]
+    );
+
+    let driver = match proc.make_worker(opinfo, indices) {
+        Ok(d) => d,
+        Err(WorkerError::General(e)) => return Err(e),
+        Err(WorkerError::Specific(e)) => return Err(e),
+    };
+
+    match process_one_input(driver, input_path.clone(), self_path, bus.clone(), true).await {
+        Ok(_) => Ok(()),
+        Err(WorkerError::General(_)) => {
+            bail!("failed to process the input, for a reason unrelated to its particular content")
+        }
+        Err(WorkerError::Specific(_)) => bail!("failed to process the input"),
     }
 }

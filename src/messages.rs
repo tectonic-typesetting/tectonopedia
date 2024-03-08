@@ -62,19 +62,13 @@ pub enum Message {
     /// correctness.
     CommandLaunched(String),
 
-    /// A notable event has been encountered during the build. These notes are
-    /// not related to the TeX compilation and so are not associated with any
-    /// particular input file.
+    /// A notable event has been encountered during the build.
     Note(AlertMessage),
 
-    /// A warning has been encountered during the build. These warnings are not
-    /// related to the TeX compilation and so are not associated with any
-    /// particular input file.
+    /// A warning has been encountered during the build.
     Warning(AlertMessage),
 
-    /// An error has been encountered during the build. These errors are not
-    /// related to the TeX compilation and so are not associated with any
-    /// particular input file.
+    /// An error has been encountered during the build.
     Error(AlertMessage),
 
     /// Output from a synchronously-run tool program has been received.
@@ -82,6 +76,9 @@ pub enum Message {
 
     /// Output from the `yarn serve` program has been received.
     YarnServeOutput(ToolOutputMessage),
+
+    /// Output from a file-specific debug operation has been received.
+    InputDebugOutput(InputDebugOutputMessage),
 
     /// Information about the build server. Sent to clients on startup.
     ServerInfo(ServerInfoMessage),
@@ -177,6 +174,13 @@ pub struct ToolOutputMessage {
 pub enum ToolOutputStream {
     Stdout,
     Stderr,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct InputDebugOutputMessage {
+    pub file: String,
+    pub lines: Vec<String>,
 }
 
 /// A MessageBus that uses the Tectonic StatusBackend mechanism
