@@ -37,6 +37,14 @@ const ErrorMessage = S.struct({
 });
 export type ErrorMessage = S.Schema.To<typeof ErrorMessage>;
 
+const InputDebugOutputMessage = S.struct({
+    input_debug_output: S.struct({
+        file: S.string,
+        lines: S.array(S.string),
+    }),
+});
+export type InputDebugOutputMessage = S.Schema.To<typeof InputDebugOutputMessage>;
+
 const NoteMessage = S.struct({
     note: AlertMessage,
 });
@@ -96,6 +104,7 @@ const Message = S.union(
     BuildStartedMessage,
     CommandLaunchedMessage,
     ErrorMessage,
+    InputDebugOutputMessage,
     NoteMessage,
     PhaseStartedMessage,
     ServerInfoMessage,

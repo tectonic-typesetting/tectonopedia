@@ -40,6 +40,8 @@ socket.addEventListener("message", (event) => {
       buildProgressTab.value?.onError(msg);
     } else if (msg.hasOwnProperty("yarn_serve_output")) {
       yarnServeTab.value?.onYarnServeOutput(msg);
+    } else if (msg.hasOwnProperty("input_debug_output")) {
+      outputTab.value?.onInputDebugOutput(msg);
     } else if (msg.hasOwnProperty("build_complete")) {
       outputTab.value?.onBuildComplete(msg);
       buildProgressTab.value?.onBuildComplete(msg);
@@ -94,6 +96,10 @@ function onQuit() {
   socket.send("quit");
 }
 
+function onDebugInput(path: string) {
+  socket.send(`debug_input:${path}`);
+}
+
 function onServerInfo(msg: ServerInfoMessage) {
   const addr = new URL(document.location.toString());
   addr.port = `${msg.server_info.app_port}`;
@@ -122,7 +128,7 @@ function onServerInfo(msg: ServerInfoMessage) {
               <span class="tablabel">Outputs</span>
             </n-badge>
           </template>
-          <output-tab ref="outputTab" @updateBadge="onUpdateOutputBadge" />
+          <output-tab ref="outputTab" @updateBadge="onUpdateOutputBadge" @debugInput="onDebugInput"/>
         </n-tab-pane>
 
         <n-tab-pane name="progress" tab="Build Progress" display-directive="show">

@@ -210,6 +210,37 @@ pub async fn build_through_index<T: MessageBus + 'static>(
     Ok(modified_files)
 }
 
+pub async fn debug_build_one_input<T: MessageBus + 'static>(
+    input_path: &str,
+    bus: T,
+) -> Result<()> {
+    let (mut bus_tx, bus_rx) = new_sync_bus_channel();
+
+    let handle = spawn_blocking(move || -> Result<(index::IndexCollection, cache::Cache)> {
+        let mut indices = index::IndexCollection::new()?;
+        atry!(
+            indices.load_user_indices();
+            ["failed to load user indices"]
+        );
+
+        let cache = atry!(
+            cache::Cache::new(&mut indices, &mut bus_tx);
+            ["error initializing build cache"]
+        );
+
+        Ok((indices, cache))
+    });
+
+    bus_rx.drain(bus.clone()).await;
+    let (mut indices, mut cache) = handle.await??;
+
+    let input = indices.make_tex_source_ident(input_path);
+
+    let mut p1r = pass1::Pass1Processor::default();
+
+    tex_pass::debug_one_input(input, &mut p1r, &mut cache, &mut indices, bus).await
+}
+
 /// The standalone build operation.
 #[derive(Args, Debug)]
 pub struct BuildArgs {
