@@ -17,11 +17,9 @@ The \tex`TEX-TITLE` is the title to be used for the explainer, including
 \TeX/\LaTeX\ markup. This title will appear at the top of the resulting output
 page.
 
-The \tex`PLAIN-TITLE` is the explainer title in plain Unicode, without any
-\TeX/\LaTeX\ markup. It is parsed in verbatim mode, so that control sequences
-and other special characters do not have their usual \TeX\ meanings. It will be
-used in places such as metadata records where \TeX/\LaTeX\ typesetting cannot be
-used.
+The \tex`PLAIN-TITLE` is the explainer title in plain Unicode, using
+\`@@-escaping` but not any \TeX/\LaTeX\ markup. It will be used in places such
+as metadata records where \TeX/\LaTeX\ typesetting cannot be used.
 
 \section*{Example}
 
@@ -33,7 +31,7 @@ Technology has come a long way since the 1970's ...
 
 
 \Entry{explain}{\string\explain}{@Bexplain}
-\DeclareTerm{@Bexplain}
+\DeclareTerm*{\string\explain}{@Bexplain}
 
 The Tectonopedia \b{\string\explain} command creates a link to the specified
 explainer page.

@@ -28,9 +28,7 @@
 }
 \def\`{%
   \begingroup
-  % Need to do \@noligs before our customization because \@noligs resets the
-  % catcode of ` to be active!
-  \@noligs
+  % See \pediaScanVerbatim for the inspiration of this implementation
   \catcode`\\=12
   \catcode`\$=12
   \catcode`\&=12
@@ -42,6 +40,7 @@
   \catcode`\{=12
   \catcode`\}=12
   \catcode`\`=2% = endgroup
+  \ttfamily
   \pedia@makeActiveWhitespace
   \pedia@defineActiveWhitespace
   \afterassignment\pedia@termrefTail

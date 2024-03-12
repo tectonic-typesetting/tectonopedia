@@ -17,11 +17,12 @@ The \tex`TEX-TITLE` is the title to be used for the entry, including
 \TeX/\LaTeX\ markup. This title will appear at the top of the resulting output
 page.
 
-The \tex`PLAIN-TITLE` is the entry title in plain Unicode, without any
-\TeX/\LaTeX\ markup. It is parsed in verbatim mode, so that control sequences
-and other special characters do not have their usual \TeX\ meanings. It will be
-used in places such as metadata records where \TeX/\LaTeX\ typesetting cannot be
-used.
+The \tex`PLAIN-TITLE` is the entry title in plain Unicode, using \`@@-escaping`
+but not any \TeX/\LaTeX\ markup. It will be used in places such as metadata
+records where \TeX/\LaTeX\ typesetting cannot be used. The term \TeX\ itself is
+a good example: when possible, we wish to kern its ‘E’; but sometimes we must
+make do with “TeX”. The latter is its plain style.
+
 
 \section*{Example}
 
@@ -33,7 +34,7 @@ The Tectonopedia command \b{\string\tduxAddTemplate} registers an HTML template 
 
 
 \Entry{e}{\string\e}{@Be}
-\DeclareTerm{@Be}
+\DeclareTerm*{\string\e}{@Be}
 
 The Tectonopedia \b{\string\e} command creates a link to the specified
 encyclopedia reference entry.
