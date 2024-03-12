@@ -16,16 +16,16 @@ assignments are in effect unless context clues indicate otherwise.
 
 The conventional special characters are:
 \begin{itemize}
-    \item \b{\textbackslash\ (backslash)}, indicating the start of a control sequence
-    \item \b{\{\ (left curly brace)}, indicating the beginning of a group
-    \item \b{\}\ (right curly brace)}, indicating the ending of a group
-    \item \b{\$\ (dollar sign)}, indicating a math mode shift
-    \item \b{\&\ (ampersand)}, delimiting table columns
-    \item \b{\#\ (octothorp)}, indicating a macro parameter
-    \item \b{\char`\^\ (caret)}, indicating a superscript
-    \item \b{\_\ (underscore)}, indicating a subscript
-    \item \b{\textasciitilde\ (tilde)}, indicating a nonbreaking space
-    \item \b{\%\ (percent sign)}, indicating a comment
+    \item \b{\texttt{\char`\\} (backslash)}, indicating the start of a control sequence
+    \item \b{\texttt{\char`\{} (left curly brace)}, indicating the beginning of a group
+    \item \b{\texttt{\char`\}} (right curly brace)}, indicating the ending of a group
+    \item \b{\texttt{\char`\$} (dollar sign)}, indicating a math mode shift
+    \item \b{\texttt{\char`\&} (ampersand)}, delimiting table columns
+    \item \b{\texttt{\char`\#} (octothorp)}, indicating a macro parameter
+    \item \b{\texttt{\char`\^} (caret)}, indicating a superscript
+    \item \b{\texttt{\char`\_} (underscore)}, indicating a subscript
+    \item \b{\texttt{\char`\~} (tilde)}, indicating a nonbreaking space
+    \item \b{\texttt{\char`\%} (percent sign)}, indicating a comment
 \end{itemize}
 Space characters could also be considered to be somewhat special, since they
 don’t behave totally literally: multiple consecutive spaces are collapsed, and
@@ -33,7 +33,7 @@ some spaces (e.g., ones after control sequences) fail to manifest in the final
 output.
 
 Likewise, ligatures can also cause some characters behave in a “special-like”
-way. For instance, input of \b{FIXME: two backticks} is usually rendered as a
+way. For instance, input of \texttt{``} is usually rendered as a
 double left curly quote, “. Ligatures are generally intended to behave
 intuitively, so if you type one unintentionally, the result will hopefully still
 be what you want.
@@ -41,54 +41,58 @@ be what you want.
 \section*{Escaping the standard special characters}
 
 If you want one of the special characters to actually appear in your output
-document, you must escape it in some fashion. Recommended escape syntaxes are:
+document, you must escape it in some fashion. In Tectonic, a reliable way to
+escape these (and any other) characters is with the syntax \tex|\char`\X|, where
+\texttt{X} is character in question. Some special characters, however, can be
+escaped reliably with terser constructs. Recommended escape syntaxes are:
 \begin{itemize}
-    \item \b{\textbackslash\ (backslash)}: \tex`\textbackslash`
-    \item \b{\{\ (left curly brace)}: \tex`\{`
-    \item \b{\}\ (right curly brace)}: \tex`\}`
-    \item \b{\$\ (dollar sign)}: \tex`\$`
-    \item \b{\&\ (ampersand)}: \tex`\&`
-    \item \b{\#\ (octothorp)}: \tex`\#`
-    \item \b{\char`\^\ (caret)}: \tex`\textasciicircum`
-    \item \b{\_\ (underscore)}: \tex`\_`
-    \item \b{\textasciitilde\ (tilde)}: \tex`\textasciitilde`
-    \item \b{\%\ (percent sign)}: \tex`\%`
+    \item \b{\texttt{\char`\\} (backslash)}: \tex|\char`\\|
+    \item \b{\texttt{\char`\{} (left curly brace)}: \tex`\{`
+    \item \b{\texttt{\char`\}} (right curly brace)}: \tex`\}`
+    \item \b{\texttt{\char`\$} (dollar sign)}: \tex`\$`
+    \item \b{\texttt{\char`\&} (ampersand)}: \tex`\&`
+    \item \b{\texttt{\char`\#} (octothorp)}: \tex`\#`
+    \item \b{\texttt{\char`\^} (caret)}: \tex|\char`\^|
+    \item \b{\texttt{\char`\_} (underscore)}: \tex`\_`
+    \item \b{\texttt{\char`\~} (tilde)}: \tex|\char`\~|
+    \item \b{\texttt{\char`\%} (percent sign)}: \tex`\%`
 \end{itemize}
-\b{FIXME: we should recommend \string\char`\string\X\ but the backtick gets
-turned into a left single curly quote even in a verbatim span!}
 
 
-% XXX need an emdash in #2 here for some reason!!!!
-\Entry{at-escaping}{@–escaping}{@@-escaping}
-\DeclareTerm{@-escaping}
+\Entry{at-escaping}{@-escaping}{@@-escaping}
+\DeclareTerm*{@-escaped}{@@-escaped}
+\DeclareTerm*{@-escaping}{@@-escaping}
 
 The \b{@-escaping} syntax is a convention used by Tectonopedia to avoid writing
 the \TeX\ \`special characters` in situations where it would be problematic to
 process them.
 
-For instance, Tectonpedia index terms can be rendered in two ways: as \TeX\
-markup, where complex typography is possible using \TeX\ commands; and in “plain
-style”, for when such typography is not possible. The term \TeX\ itself is a
-good example: when possible, we wish to kern its ‘E’; but sometime we must make
-do with “TeX”. The latter is its plain style.
+In particular, Tectonopedia index keys are interpolated directly into special
+control sequence names via \tex`\csname` … \tex`\endcsname`. The first
+occurrence of a backslash causes \tex`\csname` to stop its processing, so it is
+not possible for these special control sequences to contain backslashes. But
+without backslashes, it is virtually impossible to escape any of the other
+special characters either.
 
-However, some plain-style terms contain \TeX\ \`special characters`, and it
-becomes essentially intractable to express these terms reliably in \TeX\ source
-with traditional escaping. The @-escaping syntax is an alternative that solves
-this problem by avoiding \TeX\ special characters altogether.
+The @-escaping syntax is an unfortunately necessary layer that addresses this
+problem by avoiding \TeX\ special characters altogether.
 
 The characters with @-escapes are:
 \begin{itemize}
-    \item \b{\textbackslash\ (backslash)}: \tex`@B` (\b{b}ackslash)
-    \item \b{\{\ (left curly brace)}: \tex`@L` (\b{l}eft brace)
-    \item \b{\}\ (right curly brace)}: \tex`@R` (\b{r}ight brace)
-    \item \b{\$\ (dollar sign)}: \tex`@M` (\b{m}ath mode)
-    \item \b{\&\ (ampersand)}: \tex`@A` (\b{a}mpersand)
-    \item \b{\#\ (octothorp)}: \tex`@H`(\b{h}ash sign)
-    \item \b{\char`\^\ (caret)}: \tex`@C` (\b{c}aret)
-    \item \b{\_\ (underscore)}: \tex`@U` (\b{u}nderscore)
-    \item \b{\textasciitilde\ (tilde)}: \tex`@N` (\b{n}on-breaking space)
-    \item \b{\%\ (percent sign)}: \tex`@P` (\b{p}ercent sign) 
-    \item \b{\char`\` (backtick)}: \tex`@T` (\b{t}ick, back)
-    \item \b{@\ (at-sign)}: \tex`@@` (an at-sign itself)
+    \item \b{\texttt{\textbackslash} (backslash)}: \tex`@B` (\b{b}ackslash)
+    \item \b{\texttt{\{} (left curly brace)}: \tex`@L` (\b{l}eft brace)
+    \item \b{\texttt{\}} (right curly brace)}: \tex`@R` (\b{r}ight brace)
+    \item \b{\texttt{\$} (dollar sign)}: \tex`@M` (\b{m}ath mode)
+    \item \b{\texttt{\&} (ampersand)}: \tex`@A` (\b{a}mpersand)
+    \item \b{\texttt{\#} (octothorp)}: \tex`@H` (\b{h}ash sign)
+    \item \b{\texttt{\char`\^} (caret)}: \tex`@C` (\b{c}aret)
+    \item \b{\texttt{\_} (underscore)}: \tex`@U` (\b{u}nderscore)
+    \item \b{\texttt{\textasciitilde} (tilde)}: \tex`@N` (\b{n}on-breaking space)
+    \item \b{\texttt{\%} (percent sign)}: \tex`@P` (\b{p}ercent sign)
+    \item \b{\texttt{`} (backtick)}: \tex`@T` (\b{t}ick, back)
+    \item \b{\texttt{@} (at-sign)}: \tex`@@` (an at-sign itself)
 \end{itemize}
+
+Note that C-style escapes, HTML/XML entity syntax, and URL encoding syntax are
+all based on \TeX\ special characters (\char`\\, \char`\&\ and \char`\%,
+respectively), so they're not viable approaches.

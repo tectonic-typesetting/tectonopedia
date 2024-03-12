@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, type Ref } from "vue";
+import { ref, watch, type Ref } from "vue";
 import { NBadge, NButton, NCard, NConfigProvider, NGlobalStyle, NTabPane, NTabs } from "naive-ui";
 
 import { parseMessage, type ServerInfoMessage } from "./messages.js";
@@ -12,6 +12,31 @@ const buildProgressTab: Ref<typeof BuildProgressTab | null> = ref(null);
 const yarnServeTab: Ref<typeof YarnServeTab | null> = ref(null);
 
 const appUrl = ref("");
+
+
+// Favicon management
+
+const faviconLink = document.getElementById("favicon")! as HTMLLinkElement;
+const faviconMode = ref<"error" | "neutral" | "success" | "warning" | "working">("neutral");
+
+import faviconUrlError from "./assets/favicon_error.ico";
+import faviconUrlNeutral from "./assets/favicon_neutral.ico";
+import faviconUrlSuccess from "./assets/favicon_success.ico";
+import faviconUrlWarning from "./assets/favicon_warning.ico";
+import faviconUrlWorking from "./assets/favicon_working.ico";
+
+const faviconUrls = {
+  error: faviconUrlError,
+  neutral: faviconUrlNeutral,
+  success: faviconUrlSuccess,
+  warning: faviconUrlWarning,
+  working: faviconUrlWorking,
+};
+
+watch(faviconMode, (newMode) => {
+  faviconLink.href = faviconUrls[newMode];
+});
+
 
 // Handling the websocket
 
@@ -61,6 +86,7 @@ socket.addEventListener("message", (event) => {
   }
 });
 
+
 // Error/warning summaries. It appears that the "tab-pane" components need to be
 // located in this file, so we have to propagate the information up from *Tab
 // components.
@@ -84,6 +110,16 @@ function onUpdateProgressBadge(kind: "error" | "warning" | "info" | "success", v
   progressBadge.value.value = value;
   progressBadge.value.kind = kind;
   progressBadge.value.processing = processing;
+
+  if (kind == "error") {
+    faviconMode.value = "error";
+  } else if (kind == "warning") {
+    faviconMode.value = "warning";
+  } else if (kind == "success" && !processing) {
+    faviconMode.value = "success";
+  } else if (processing) {
+    faviconMode.value = "working";
+  }
 }
 
 // Actions

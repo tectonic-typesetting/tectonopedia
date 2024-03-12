@@ -45,7 +45,14 @@
   \catcode`\~=12
   \catcode`\_=12
   \catcode`\^=12
-  \@noligs
+  % Activate the mono font, which doesn't have TeX ligatures enabled. When we
+  % are doing this verbatim-mode scanning, that's what we want. fancyvrb uses
+  % \@noligs, but that has a problem because it defines ligature-prone
+  % characters to be active, which means that if/when we try to expand the
+  % resulting tokens we get undefined-control-sequence errors, because the
+  % active meanings of those characters are only defined within this group.
+  \ttfamily
+  %
   \pedia@makeActiveWhitespace
   \pedia@defineActiveWhitespace
   \def\tmp@a{\pedia@afterScanVerbatim #1}%

@@ -1,4 +1,4 @@
-\Entry{DeclareTerm}{\string\DeclareTerm}{\DeclareTerm}
+\Entry{DeclareTerm}{\string\DeclareTerm}{@BDeclareTerm}
 \DeclareTerm*{\string\DeclareTerm}{@BDeclareTerm}
 
 The Tectonopedia command \b{\string\DeclareTerm} declares a “term” usable for
@@ -12,9 +12,11 @@ wiki-style linking within a Tectonopedia collection.
 \end{texdisp}
 
 The unstarred form of this command declares a term whose contents do not include
-any special \TeX\ characters. The starred form must be used when the desired
-typesetting of the term includes characters that have special meanings to the
-\TeX\ language.
+any \TeX\ \`special characters` \i{or} characters subject to \`@@-escaping`. The
+starred form must be used when the desired typesetting of the term includes
+characters that have special meanings to the \TeX\ language, \i{or} an at-sign
+(@). In that case, the \tex`PLAIN-TERM` is the term expressed with
+\`@@-escaping` but no \TeX/\LaTeX markup.
 
 \section*{Example}
 
@@ -40,9 +42,7 @@ This command does not expand to any text in the output document.
 \end{itemize}
 
 
-% backticks in the second argument here seem to cause serious parser issues!
-% something to investigate.
-\Entry{(backtick)}{\char92\char96}{\`}
+\Entry{(backtick)}{\char92\char`\`}{@B@T}
 \DeclareTerm*{\string\`}{@B@T}
 
 The Tectonopedia command \b{\string\`} (a single-letter control sequence
@@ -56,8 +56,8 @@ associated with a backtick) links to a term using wiki-style linking.
 
 The command has a special syntax. Its argument is terminated by the first
 backtick character encountered by the \TeX\ parser after reading in the command.
-The argument should be the “plain” textualization of a term declared using
-\`@BDeclareTerm`.
+The argument should be the \`@@-escaped` “plain” textualization of a term
+declared using \`@BDeclareTerm`.
 
 \section*{Example}
 
