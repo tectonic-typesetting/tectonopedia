@@ -1,12 +1,5 @@
-\Entry{end}{\string\end\ (\TeX\ primitive)}{\end (TeX primitive)}
-% FIXME: multiple issues to address here. We can't use a backslash in the "text"
-% form of this term, because that text is inserted directly into a
-% \csname...\endcsname construct, and the backslash causes TeX to abort the
-% csname construction. We could potentially fix this if we somehow got TeX to
-% tokenize backslashes as letters while processing the \csname? But I have
-% trouble seeing how to do that.
-%
-% Furthermore, we can't use "\tex`\end`" in the TeX form of the term, because it
+\Entry{end}{\string\end\ (\TeX\ primitive)}{@Bend (TeX primitive)}
+% We can't use "\tex`\end`" in the TeX form of the term, because it
 % is tokenized during the macro definition, so the macro expansion works out to
 % `(\tex cseq)(backtick)(\end cseq)(backtick)` -- the \tex command doesn't have
 % the chance to get the tokenizer to handle `\end` specially. I am not sure if
