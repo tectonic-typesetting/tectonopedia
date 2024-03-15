@@ -1,0 +1,52 @@
+% TODO: various private-ish cseqs defined in this file that we're not documenting
+
+\Entry{pediaAtDecodeVar}{\string\pediaAtDecodeVar}{@BpediaAtDecodeVar}
+\DeclareTerm*{\string\pediaAtDecodeVar}{@BpediaAtDecodeVar}
+
+The Tectonopedia command \b{\string\pediaAtDecodeVar} decodes the \`@@-escaping`
+syntax used to avoid writing the \TeX\ \`special characters`.
+
+\section*{Usage}
+
+\begin{texdisp}
+\pediaAtDecodeVar{TOKLIST-VAR-CSEQ}
+\end{texdisp}
+
+The \tex`TOKLIST-VAR-CSEQ` is a control sequence corresponding to a \TeX\
+token-list register.
+
+For technical reasons, the decoded result is stored in a buffer that can be
+retrieved using \`@BpediaAtDecodeResult`.
+
+\section*{Remarks}
+
+The input argument is assigned to an “expl3” token-list variable
+using the command \tex`\tl_set:NV`.
+
+
+\Entry{pediaAtDecodeResult}{\string\pediaAtDecodeResult}{@BpediaAtDecodeResult}
+\DeclareTerm*{\string\pediaAtDecodeResult}{@BpediaAtDecodeResult}
+
+The Tectonopedia command \b{\string\pediaAtDecodeResult} expands to the
+result of the most recent invocation of \`@BpediaAtDecodeVar`.
+
+\section*{Usage}
+
+\begin{texdisp}
+\pediaAtDecodeResult
+\end{texdisp}
+
+There are no arguments.
+
+\section*{Example}
+
+\begin{texdisp}
+\newtoks\myexample
+\myexample={left brace @B, right brace @R, backslash @B}
+\pediaAtDecodeVar{\myexample}
+\message{after decoding: \pediaAtDecodeResult}
+\end{texdisp}
+
+\section*{Remarks}
+
+Under the hood, this invokes the “expl3” command \tex`\tl_use:N`.
