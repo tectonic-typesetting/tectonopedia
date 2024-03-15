@@ -1,0 +1,102 @@
+% Copyright 2024 the Tectonic Project
+% Licensed under the MIT License
+%
+% Decoding the "at-escaping" syntax inside TeX. Documentation in
+% `~/txt/pedia/at_escaping.tex`.
+%
+% OMG, I had SO MUCH trouble getting this to work! I feel like there must be
+% a better way but in several days of trying I couldn't figure out a way
+% to be able to rewrite token lists in-place short of using the expl3 syntax.
+
+% First ... define macros corresponding to the various special characters that
+% need escaping, all with letter catcodes rather than whatever makes them
+% special. So \pediaAtDecodedL expands to a left brace with a letter catcode.
+\begingroup
+  \catcode`\*=0
+  \catcode`\<=1
+  \catcode`\>=2
+  *catcode`*\=11
+  *catcode`*{=11
+  *catcode`*}=11
+  *catcode`*$=11
+  *catcode`*&=11
+  *catcode`*#=11
+  *catcode`*^=11
+  *catcode`*_=11
+  *catcode`*~=11
+  *catcode`*%=11
+  *global*def*pediaAtDecodedB<\>
+  *global*def*pediaAtDecodedL<{>
+  *global*def*pediaAtDecodedR<}>
+  *global*def*pediaAtDecodedM<$>
+  *global*def*pediaAtDecodedA<&>
+  *global*def*pediaAtDecodedH<#>
+  *global*def*pediaAtDecodedC<^>
+  *global*def*pediaAtDecodedU<_>
+  *global*def*pediaAtDecodedN<~>
+  *global*def*pediaAtDecodedP<%>
+  *global*def*pediaAtDecodedT<`>
+*endgroup
+
+\ExplSyntaxOn
+
+% We need this to get the catcodes of all of our @'s below to agree with the
+% input files. Otherwise none of the replacements occur!
+\makeatother
+
+% An expl3 tokenlist buffer that we'll use for the replacement.
+\tl_new:N \pedia:atDecodeBuf
+
+% I'm sure there's a better way to do this ... but we need to invoke
+% \tl_replace_all:Nnn on the decode buffer to replace most of our at-codes with
+% the right characters, *using letter catcodes instead of the ones that make
+% them special*. But, in TL2023 we only have \tl_replace_all:Nnn and not things
+% like \tl_replace_all:Nne, so the final argument must be the *literal* desired
+% replacement. To make this happen, I use \edef and some \noexpands to define
+% dumb macros that expand out our \pediaAtDecoded* helpers. So, the macro
+% \pedia:atReplaceL expands to:
+%
+% \tl_replace_all:Nnn \pedia:atDecodeBuf { @L } { { }
+%
+% where the imbalanced left brace there has a letter catcode
+\edef\pedia:atReplaceB{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @B } { \pediaAtDecodedB } }
+\edef\pedia:atReplaceL{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @L } { \pediaAtDecodedL } }
+\edef\pedia:atReplaceR{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @R } { \pediaAtDecodedR } }
+\edef\pedia:atReplaceM{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @M } { \pediaAtDecodedM } }
+\edef\pedia:atReplaceA{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @A } { \pediaAtDecodedA } }
+\edef\pedia:atReplaceH{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @H } { \pediaAtDecodedH } }
+\edef\pedia:atReplaceC{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @C } { \pediaAtDecodedC } }
+\edef\pedia:atReplaceU{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @U } { \pediaAtDecodedU } }
+\edef\pedia:atReplaceN{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @N } { \pediaAtDecodedN } }
+\edef\pedia:atReplaceP{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @P } { \pediaAtDecodedP } }
+\edef\pedia:atReplaceT{ \noexpand\tl_replace_all:Nnn \noexpand\pedia:atDecodeBuf { @T } { \pediaAtDecodedT } }
+
+% With all these tools in place, we can perform the replacements in our buffer.
+% The final trick is to replace @@ with a temporary control sequence because
+% otherwise something like `@@L` might get incorrectly turned into `{`.
+% Fortunately, the @ doesn't need any fancy escaping so we don't have to jump
+% through the kinds of hoops encountered above.
+\def\pediaAtDecodeVar#1{
+  \tl_set:NV \pedia:atDecodeBuf #1
+  \tl_replace_all:Nnn \pedia:atDecodeBuf { @@ } { \tmpat }
+  \pedia:atReplaceB
+  \pedia:atReplaceL
+  \pedia:atReplaceR
+  \pedia:atReplaceM
+  \pedia:atReplaceA
+  \pedia:atReplaceH
+  \pedia:atReplaceC
+  \pedia:atReplaceU
+  \pedia:atReplaceN
+  \pedia:atReplaceP
+  \pedia:atReplaceT
+  \tl_replace_all:Nnn \pedia:atDecodeBuf { \tmpat } { @ }
+}
+
+% Finally, this isn't very special, but since the rest of our package isn't
+% using expl3 syntax, it's helpful.
+\def\pediaAtDecodeResult{
+  \tl_use:N \pedia:atDecodeBuf
+}
+
+\ExplSyntaxOff
